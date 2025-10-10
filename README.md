@@ -1,4 +1,4 @@
-# 💰 Carteira Digital - React Native + Firebase
+# 💰 Carteira Digital
 
 Um aplicativo completo de gestão financeira pessoal desenvolvido em React Native com Expo e Firebase.
 
