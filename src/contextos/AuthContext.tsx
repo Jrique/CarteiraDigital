@@ -24,6 +24,7 @@ interface UsuarioData {
   despesas_mes?: number;
   criado_em?: string;
   atualizado_em?: string;
+  fotoPerfilUrl?: string;
 }
 
 interface AuthContextType {
@@ -49,10 +50,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user: User | null) => {
       if (user) {
-        // Usuário logado, buscar dados do Firestore
         await carregarDadosUsuario(user);
       } else {
-        // Usuário não logado
         setUsuario(null);
       }
       setCarregando(false);
@@ -74,7 +73,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
           ...userData
         });
       } else {
-        // Criar documento do usuário se não existir
         const novoUsuario: UsuarioData = {
           uid: user.uid,
           email: user.email || '',
@@ -99,7 +97,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setCarregando(true);
       await signInWithEmailAndPassword(auth, email, senha);
-      // O onAuthStateChanged vai lidar com o resto
     } catch (error: any) {
       console.error('Erro no login:', error);
       throw new Error(getErrorMessage(error.code));
@@ -113,12 +110,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setCarregando(true);
       const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
       
-      // Atualizar o perfil do usuário
       await updateProfile(userCredential.user, {
         displayName: nomeCompleto
       });
 
-      // Criar documento no Firestore
       const novoUsuario: UsuarioData = {
         uid: userCredential.user.uid,
         email: email,
@@ -216,4 +211,3 @@ export function useAuth(): AuthContextType {
   }
   return context;
 }
-

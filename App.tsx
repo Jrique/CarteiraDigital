@@ -1,5 +1,5 @@
 import React from 'react';
-import { NavigationContainer, DefaultTheme, DarkTheme as NavigationDarkTheme } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthProvider, useAuth } from './src/contextos/AuthContext';
@@ -19,22 +19,16 @@ import TelaAuth from './src/telas/TelaAuth';
 import TelaCarteiras from './src/telas/TelaCarteiras';
 import TelaDetalheLicao from './src/telas/TelaDetalheLicao';
 
-const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator();
+// Tipagem para a navegação
+export type RootStackParamList = {
+  HomeTabs: undefined;
+  DetalheLicao: { licaoId: string };
+  Carteiras: undefined;
+  Auth: undefined;
+};
 
-function HomeStack() {
-  return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="HomeTabs" component={AppTabs} />
-      <Stack.Screen 
-        name="DetalheLicao" 
-        component={TelaDetalheLicao}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen name="Carteiras" component={TelaCarteiras} />
-    </Stack.Navigator>
-  );
-}
+const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 function AppTabs() {
   return (
@@ -84,6 +78,35 @@ function AppTabs() {
   );
 }
 
+function AppNavigator() {
+    const { usuario, carregando } = useAuth();
+  
+    if (carregando) {
+      return (
+        <View style={estilos.carregando}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      );
+    }
+  
+    return (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {usuario ? (
+          <>
+            <Stack.Screen name="HomeTabs" component={AppTabs} />
+            <Stack.Screen 
+              name="DetalheLicao" 
+              component={TelaDetalheLicao}
+            />
+            <Stack.Screen name="Carteiras" component={TelaCarteiras} />
+          </>
+        ) : (
+          <Stack.Screen name="Auth" component={TelaAuth} />
+        )}
+      </Stack.Navigator>
+    );
+  }
+
 export default function App() {
   return (
     <AuthProvider>
@@ -96,33 +119,6 @@ export default function App() {
   );
 }
 
-function AppNavigator() {
-  const { usuario, carregando } = useAuth();
-
-  if (carregando) {
-    return (
-      <View style={estilos.carregando}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
-    );
-  }
-
-  if (!usuario) {
-    return <TelaAuth />;
-  }
-
-  return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="HomeTabs" component={AppTabs} />
-      <Stack.Screen 
-        name="DetalheLicao" 
-        component={TelaDetalheLicao}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen name="Carteiras" component={TelaCarteiras} />
-    </Stack.Navigator>
-  );
-}
 
 const estilos = StyleSheet.create({
   carregando: {
@@ -132,4 +128,3 @@ const estilos = StyleSheet.create({
     backgroundColor: Colors.background,
   },
 });
-

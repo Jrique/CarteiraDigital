@@ -34,3 +34,6 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# Ignorar arquivo de variáveis de ambiente
+.env

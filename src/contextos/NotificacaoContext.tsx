@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, ReactNode } from 'react';
 import NotificacaoModerna, { NotificacaoProps } from '../componentes/NotificacaoModerna';
 
 interface NotificacaoContextType {
-  mostrarNotificacao: (notificacao: Omit<NotificacaoProps, 'visivel' | 'onFechar'>) => void;
+  mostrarNotificacao: (titulo: string, mensagem: string, tipo: 'sucesso' | 'erro' | 'aviso' | 'info') => void;
   mostrarSucesso: (titulo: string, mensagem: string) => void;
   mostrarErro: (titulo: string, mensagem: string) => void;
   mostrarAviso: (titulo: string, mensagem: string) => void;
@@ -24,46 +24,31 @@ interface NotificacaoProviderProps {
 }
 
 export const NotificacaoProvider: React.FC<NotificacaoProviderProps> = ({ children }) => {
-  const [notificacao, setNotificacao] = useState<NotificacaoProps | null>(null);
+  const [notificacao, setNotificacao] = useState<Omit<NotificacaoProps, 'onFechar'> | null>(null);
 
-  const mostrarNotificacao = (novaNotificacao: Omit<NotificacaoProps, 'visivel' | 'onFechar'>) => {
+  const mostrarNotificacao = (titulo: string, mensagem: string, tipo: 'sucesso' | 'erro' | 'aviso' | 'info') => {
     setNotificacao({
-      ...novaNotificacao,
+      tipo,
+      titulo,
+      mensagem,
       visivel: true,
-      onFechar: () => setNotificacao(null),
     });
   };
 
   const mostrarSucesso = (titulo: string, mensagem: string) => {
-    mostrarNotificacao({
-      tipo: 'sucesso',
-      titulo,
-      mensagem,
-    });
+    mostrarNotificacao(titulo, mensagem, 'sucesso');
   };
 
   const mostrarErro = (titulo: string, mensagem: string) => {
-    mostrarNotificacao({
-      tipo: 'erro',
-      titulo,
-      mensagem,
-    });
+    mostrarNotificacao(titulo, mensagem, 'erro');
   };
 
   const mostrarAviso = (titulo: string, mensagem: string) => {
-    mostrarNotificacao({
-      tipo: 'aviso',
-      titulo,
-      mensagem,
-    });
+    mostrarNotificacao(titulo, mensagem, 'aviso');
   };
 
   const mostrarInfo = (titulo: string, mensagem: string) => {
-    mostrarNotificacao({
-      tipo: 'info',
-      titulo,
-      mensagem,
-    });
+    mostrarNotificacao(titulo, mensagem, 'info');
   };
 
   return (
@@ -77,8 +62,12 @@ export const NotificacaoProvider: React.FC<NotificacaoProviderProps> = ({ childr
       }}
     >
       {children}
-      {notificacao && <NotificacaoModerna {...notificacao} />}
+      {notificacao && (
+        <NotificacaoModerna
+          {...notificacao}
+          onFechar={() => setNotificacao(null)}
+        />
+      )}
     </NotificacaoContext.Provider>
   );
 };
-

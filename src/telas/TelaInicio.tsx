@@ -7,23 +7,22 @@ import {
   TouchableOpacity,
   SafeAreaView,
   RefreshControl,
-  Alert,
+  ActivityIndicator, // Importei o ActivityIndicator aqui
   Modal,
   TextInput,
   Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contextos/AuthContext';
-import { FirebaseService, DashboardData, Transacao, Carteira } from '../servicos/FirebaseService';
+import { FirebaseService, DashboardData, Transacao, Carteira, Meta } from '../servicos/FirebaseService';
 import { Colors, Typography } from '../estilos/theme';
-import { Picker } from '@react-native-picker/picker';
 import { obterCategoriasPorTipo } from '../utils/categorias';
 import DropdownModerno from '../componentes/DropdownModerno';
 import { useNotificacao } from '../contextos/NotificacaoContext';
 
 export default function TelaInicio({ navigation }: any) {
   const { usuario, recarregarDadosUsuario } = useAuth();
-  const { mostrarErro, mostrarSucesso } = useNotificacao();
+  const { mostrarErro, mostrarSucesso, mostrarAviso } = useNotificacao();
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [atualizando, setAtualizando] = useState(false);
@@ -67,11 +66,10 @@ export default function TelaInicio({ navigation }: any) {
   }, [carregarDashboard]);
 
   const abrirModalTransacao = (tipo: 'receita' | 'despesa') => {
-    if (!dashboardData || dashboardData.carteiras.length === 0) {
-      mostrarNotificacao(
+    if (!dashboardData || dashboardData.carteiras.filter(c => c.ativa).length === 0) {
+      mostrarAviso(
         'Nenhuma Carteira Disponível',
-        'Você precisa criar pelo menos uma carteira antes de adicionar transações.',
-        'warning'
+        'Você precisa criar e ativar pelo menos uma carteira antes de adicionar transações.',
       );
       navigation.navigate('Carteiras');
       return;
@@ -79,10 +77,10 @@ export default function TelaInicio({ navigation }: any) {
     setTipoTransacao(tipo);
     const categorias = obterCategoriasPorTipo(tipo);
     setFormTransacao({
-      categoria: categorias[0],
+      categoria: categorias[0].id,
       valor: '',
       descricao: '',
-      carteiraId: dashboardData.carteiras[0]?.id || '',
+      carteiraId: dashboardData.carteiras.find(c => c.ativa)?.id || '',
     });
     setModalTransacao(true);
   };
@@ -105,7 +103,7 @@ export default function TelaInicio({ navigation }: any) {
 
       setModalTransacao(false);
       mostrarSucesso('Sucesso', 'Transação criada com sucesso!');
-      carregarDashboard();
+      onRefresh();
     } catch (error) {
       console.error('Erro ao criar transação:', error);
       mostrarErro('Erro', 'Não foi possível criar a transação');
@@ -128,7 +126,8 @@ export default function TelaInicio({ navigation }: any) {
     return (
       <SafeAreaView style={estilos.container}>
         <View style={estilos.carregando}>
-          <Text style={Typography.bodyMedium}>Carregando...</Text>
+          {/* Adicionei o ActivityIndicator para uma melhor experiência */}
+          <ActivityIndicator size="large" color={Colors.primary} />
         </View>
       </SafeAreaView>
     );
@@ -146,7 +145,6 @@ export default function TelaInicio({ navigation }: any) {
 
   return (
     <SafeAreaView style={estilos.container}>
-      {/* Cabeçalho com Saldo */}
       <View style={estilos.cabecalho}>
         <View style={estilos.saudacao}>
           <Text style={estilos.textoSaudacao}>
@@ -168,7 +166,6 @@ export default function TelaInicio({ navigation }: any) {
           <RefreshControl refreshing={atualizando} onRefresh={onRefresh} tintColor={Colors.primary} />
         }
       >
-        {/* Resumo do Mês */}
         <View style={estilos.secao}>
           <Text style={estilos.tituloSecao}>Resumo do Mês</Text>
           
@@ -205,7 +202,6 @@ export default function TelaInicio({ navigation }: any) {
           </View>
         </View>
 
-        {/* Ações Rápidas */}
         <View style={estilos.secao}>
           <Text style={estilos.tituloSecao}>Ações Rápidas</Text>
           
@@ -242,7 +238,6 @@ export default function TelaInicio({ navigation }: any) {
           </View>
         </View>
 
-        {/* Transações Recentes */}
         <View style={estilos.secao}>
           <View style={estilos.cabecalhoSecao}>
             <Text style={estilos.tituloSecao}>Transações Recentes</Text>
@@ -287,20 +282,19 @@ export default function TelaInicio({ navigation }: any) {
           )}
         </View>
 
-        {/* Metas Ativas */}
         {dashboardData.metasAtivas.length > 0 && (
           <View style={estilos.secao}>
             <Text style={estilos.tituloSecao}>Metas Ativas</Text>
             
             <View style={estilos.listaMetas}>
-              {dashboardData.metasAtivas.map((meta: any) => (
+              {dashboardData.metasAtivas.map((meta: Meta) => (
                 <View key={meta.id} style={estilos.itemMeta}>
                   <View style={estilos.infoMeta}>
                     <Text style={estilos.tituloMeta}>{meta.titulo}</Text>
                     <Text style={estilos.categoriaMeta}>{meta.categoria}</Text>
                     <Text style={estilos.progressoTexto}>
                       R$ {meta.valorAtual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / 
-                      R$ {meta.valorObjetivo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      R$ {meta.valorMeta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </Text>
                   </View>
                   <View style={estilos.progressoContainer}>
@@ -323,7 +317,6 @@ export default function TelaInicio({ navigation }: any) {
         )}
       </ScrollView>
 
-      {/* Modal de Transação */}
       <Modal
         visible={modalTransacao}
         animationType="slide"
@@ -345,9 +338,9 @@ export default function TelaInicio({ navigation }: any) {
               <Text style={estilos.labelInput}>Carteira *</Text>
               <View style={estilos.pickerContainer}>
                 <DropdownModerno
-                  selectedValue={formTransacao.carteiraId}
-                  onValueChange={(value: any) => setFormTransacao(prev => ({ ...prev, carteiraId: value }))}
-                  options={dashboardData.carteiras.map((c: Carteira) => ({ label: c.nome, value: c.id! }))}
+                  valorSelecionado={formTransacao.carteiraId}
+                  onSelecionar={(value: any) => setFormTransacao(prev => ({ ...prev, carteiraId: value }))}
+                  opcoes={dashboardData.carteiras.filter(c => c.ativa).map((c: Carteira) => ({ label: c.nome, value: c.id! }))}
                   placeholder="Selecione uma carteira"
                 />
               </View>
@@ -355,9 +348,9 @@ export default function TelaInicio({ navigation }: any) {
               <Text style={estilos.labelInput}>Categoria *</Text>
               <View style={estilos.pickerContainer}>
                 <DropdownModerno
-                  selectedValue={formTransacao.categoria}
-                  onValueChange={(value: any) => setFormTransacao(prev => ({ ...prev, categoria: value }))}
-                  options={categoriasForm.map(c => ({ label: c, value: c }))}
+                  valorSelecionado={formTransacao.categoria}
+                  onSelecionar={(value: any) => setFormTransacao(prev => ({ ...prev, categoria: value }))}
+                  opcoes={categoriasForm.map(c => ({ label: c.nome, value: c.id }))}
                   placeholder="Selecione uma categoria"
                 />
               </View>
@@ -544,7 +537,6 @@ const estilos = StyleSheet.create({
     marginTop: 5,
   },
   listaTransacoes: {
-    // Estilos para a lista de transações
   },
   itemTransacao: {
     flexDirection: 'row',
@@ -598,7 +590,6 @@ const estilos = StyleSheet.create({
     fontWeight: '700' as '700',
   },
   listaMetas: {
-    // Estilos para a lista de metas
   },
   itemMeta: {
     backgroundColor: Colors.card,
@@ -684,7 +675,6 @@ const estilos = StyleSheet.create({
     marginBottom: 8,
   },
   pickerContainer: {
-    backgroundColor: Colors.inputBackground,
     borderRadius: 10,
     marginBottom: 15,
     borderWidth: 1,
@@ -719,5 +709,3 @@ const estilos = StyleSheet.create({
     color: Colors.buttonText,
   },
 });
-
-

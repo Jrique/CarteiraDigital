@@ -12,18 +12,21 @@ import {
   Image,
   RefreshControl,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contextos/AuthContext';
-import FirebaseService, { Aprendizado } from '../servicos/FirebaseService';
+import FirebaseService, { Licao, ProgressoLicao } from '../servicos/FirebaseService';
 import { Colors, Typography } from '../estilos/theme';
+import { useNotificacao } from '../contextos/NotificacaoContext';
 
 export default function TelaPerfil({ navigation }: any) {
-  const { usuario, logout, atualizarPerfil } = useAuth();
+  const { usuario, logout, atualizarUsuario } = useAuth();
+  const { mostrarErro, mostrarSucesso } = useNotificacao();
   const [modalEdicao, setModalEdicao] = useState(false);
   const [modalAprendizadosSalvos, setModalAprendizadosSalvos] = useState(false);
-  const [aprendizadosSalvos, setAprendizadosSalvos] = useState<Aprendizado[]>([]);
+  const [aprendizadosSalvos, setAprendizadosSalvos] = useState<Licao[]>([]);
   const [carregandoAprendizados, setCarregandoAprendizados] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
   const [formPerfil, setFormPerfil] = useState({
@@ -39,15 +42,20 @@ export default function TelaPerfil({ navigation }: any) {
 
     setCarregandoAprendizados(true);
     try {
-      const dados = await FirebaseService.listarAprendizados(usuario.uid, 'salvos');
-      setAprendizadosSalvos(dados);
+      const todasLicoes = await FirebaseService.listarLicoes();
+      const progressos = await FirebaseService.obterProgressoLicoes();
+      
+      const salvosIds = progressos.filter(p => p.salva).map(p => p.licaoId);
+      const licoesSalvas = todasLicoes.filter(licao => salvosIds.includes(licao.id!));
+
+      setAprendizadosSalvos(licoesSalvas);
     } catch (error) {
       console.error('Erro ao carregar aprendizados salvos:', error);
-      Alert.alert('Erro', 'Não foi possível carregar os aprendizados salvos.');
+      mostrarErro('Erro', 'Não foi possível carregar os aprendizados salvos.');
     } finally {
       setCarregandoAprendizados(false);
     }
-  }, [usuario]);
+  }, [usuario, mostrarErro]);
 
   const onRefresh = useCallback(async () => {
     setAtualizando(true);
@@ -56,8 +64,10 @@ export default function TelaPerfil({ navigation }: any) {
   }, [carregarAprendizadosSalvos]);
 
   useEffect(() => {
-    carregarAprendizadosSalvos();
-  }, [carregarAprendizadosSalvos]);
+    if (usuario) {
+        carregarAprendizadosSalvos();
+    }
+  }, [usuario, carregarAprendizadosSalvos]);
 
   const selecionarFoto = async () => {
     try {
@@ -76,14 +86,12 @@ export default function TelaPerfil({ navigation }: any) {
       });
 
       if (!result.canceled && result.assets[0]) {
-        // Aqui você implementaria o upload da imagem para o Firebase Storage
-        // Por simplicidade, vamos apenas simular a atualização
-        Alert.alert('Sucesso', 'Foto de perfil atualizada com sucesso!');
-        // await atualizarPerfil({ fotoPerfilUrl: result.assets[0].uri });
+        mostrarSucesso('Sucesso', 'Foto de perfil atualizada com sucesso!');
+        // await atualizarUsuario({ fotoPerfilUrl: result.assets[0].uri });
       }
     } catch (error) {
       console.error('Erro ao selecionar foto:', error);
-      Alert.alert('Erro', 'Não foi possível selecionar a foto.');
+      mostrarErro('Erro', 'Não foi possível selecionar a foto.');
     }
   };
 
@@ -103,13 +111,12 @@ export default function TelaPerfil({ navigation }: any) {
       });
 
       if (!result.canceled && result.assets[0]) {
-        // Aqui você implementaria o upload da imagem para o Firebase Storage
-        Alert.alert('Sucesso', 'Foto de perfil atualizada com sucesso!');
-        // await atualizarPerfil({ fotoPerfilUrl: result.assets[0].uri });
+        mostrarSucesso('Sucesso', 'Foto de perfil atualizada com sucesso!');
+        // await atualizarUsuario({ fotoPerfilUrl: result.assets[0].uri });
       }
     } catch (error) {
       console.error('Erro ao tirar foto:', error);
-      Alert.alert('Erro', 'Não foi possível tirar a foto.');
+      mostrarErro('Erro', 'Não foi possível tirar a foto.');
     }
   };
 
@@ -126,6 +133,8 @@ export default function TelaPerfil({ navigation }: any) {
   };
 
   const salvarPerfil = async () => {
+    if (!usuario) return;
+
     try {
       const dadosAtualizados = {
         nome_completo: formPerfil.nome_completo,
@@ -135,12 +144,12 @@ export default function TelaPerfil({ navigation }: any) {
         renda_mensal: formPerfil.renda_mensal ? parseFloat(formPerfil.renda_mensal) : undefined,
       };
 
-      await atualizarPerfil(dadosAtualizados);
+      await atualizarUsuario(dadosAtualizados);
       setModalEdicao(false);
-      Alert.alert('Sucesso', 'Perfil atualizado com sucesso!');
+      mostrarSucesso('Sucesso', 'Perfil atualizado com sucesso!');
     } catch (error) {
       console.error('Erro ao atualizar perfil:', error);
-      Alert.alert('Erro', 'Não foi possível atualizar o perfil.');
+      mostrarErro('Erro', 'Não foi possível atualizar o perfil.');
     }
   };
 
@@ -155,16 +164,16 @@ export default function TelaPerfil({ navigation }: any) {
     );
   };
 
-  const removerAprendizadoSalvo = async (aprendizadoId: string) => {
+  const removerAprendizadoSalvo = async (licaoId: string) => {
     if (!usuario) return;
 
     try {
-      await FirebaseService.toggleAprendizadoSalvo(aprendizadoId, usuario.uid, false);
-      Alert.alert('Sucesso', 'Aprendizado removido dos salvos.');
+      await FirebaseService.toggleLicaoSalva(licaoId);
+      mostrarSucesso('Sucesso', 'Aprendizado removido dos salvos.');
       carregarAprendizadosSalvos();
     } catch (error) {
       console.error('Erro ao remover aprendizado salvo:', error);
-      Alert.alert('Erro', 'Não foi possível remover o aprendizado.');
+      mostrarErro('Erro', 'Não foi possível remover o aprendizado.');
     }
   };
 
@@ -453,22 +462,22 @@ export default function TelaPerfil({ navigation }: any) {
 
             <ScrollView style={estilos.modalBody}>
               {carregandoAprendizados ? (
-                <Text style={estilos.textoCarregando}>Carregando...</Text>
+                <ActivityIndicator size="large" color={Colors.primary} />
               ) : aprendizadosSalvos.length > 0 ? (
-                aprendizadosSalvos.map(aprendizado => (
+                aprendizadosSalvos.map(licao => (
                   <Pressable 
-                    key={aprendizado.id}
+                    key={licao.id}
                     style={({ pressed }) => [estilos.itemAprendizado, pressed && estilos.itemAprendizadoPressionado]}
                     onPress={() => {
                       setModalAprendizadosSalvos(false);
-                      navigation.navigate('DetalheEducacao', { aprendizadoId: aprendizado.id });
+                      navigation.navigate('DetalheLicao', { licaoId: licao.id });
                     }}
                   >
                     <View style={estilos.textoAprendizado}>
-                      <Text style={estilos.tituloAprendizado}>{aprendizado.titulo}</Text>
-                      <Text style={estilos.resumoAprendizado}>{aprendizado.resumo}</Text>
+                      <Text style={estilos.tituloAprendizado}>{licao.titulo}</Text>
+                      <Text style={estilos.resumoAprendizado}>{licao.resumo}</Text>
                     </View>
-                    <TouchableOpacity onPress={() => removerAprendizadoSalvo(aprendizado.id!)}>
+                    <TouchableOpacity onPress={() => removerAprendizadoSalvo(licao.id!)}>
                       <Ionicons name="trash-outline" size={20} color={Colors.error} />
                     </TouchableOpacity>
                   </Pressable>
@@ -485,126 +494,262 @@ export default function TelaPerfil({ navigation }: any) {
 }
 
 const estilos = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  cabecalho: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    paddingTop: 40,
-    backgroundColor: Colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
-  },
-  titulo: {
-    ...Typography.h2,
-    flex: 1,
-    textAlign: 'center',
-    marginLeft: 48, // Ajuste para centralizar o título
-  },
-  botaoEditar: {
-    padding: 8,
-  },
-  botaoEditarPressionado: {
-    opacity: 0.7,
-  },
-  conteudo: {
-    flex: 1,
-  },
-  secaoUsuario: {
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: Colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
-  },
-  containerFoto: {
-    position: 'relative',
-    marginBottom: 12,
-  },
-  containerFotoPressionado: {
-    opacity: 0.8,
-  },
-  fotoPerfil: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 3,
-    borderColor: Colors.primary,
-  },
-  fotoPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: Colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 3,
-    borderColor: Colors.divider,
-  },
-  iconeCamera: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-    padding: 4,
-    borderWidth: 2,
-    borderColor: Colors.surface,
-  },
-  nomeUsuario: {
-    ...Typography.h2,
-    marginBottom: 4,
-  },
-  emailUsuario: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-  },
-  secao: {
-    marginTop: 16,
-    backgroundColor: Colors.surface,
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: Colors.divider,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
-  },
-  tituloSecao: {
-    ...Typography.h3,
-    marginBottom: 16,
-  },
-  listaInfo: {
-    gap: 16,
-  },
-  itemInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  iconeInfo: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  textoInfo: {
-    flex: 1,
-  },
-  labelInfo: {
-    ...Typography.small,
-    color: Colors.textSecondary,
-
-    marginBottom: 4,
-  },
-  valorInfo: {
-    fontSize: 16,
-    fontWeight: '600' as '600',
-    color: Colors.textPrimary,
-  },
-});
-
+    container: {
+      flex: 1,
+      backgroundColor: Colors.background,
+    },
+    cabecalho: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 16,
+      paddingTop: 40,
+      backgroundColor: Colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: Colors.divider,
+    },
+    titulo: {
+      ...Typography.h2,
+      flex: 1,
+      textAlign: 'center',
+      marginLeft: 48,
+    },
+    botaoEditar: {
+      padding: 8,
+    },
+    botaoEditarPressionado: {
+      opacity: 0.7,
+    },
+    conteudo: {
+      flex: 1,
+    },
+    secaoUsuario: {
+      alignItems: 'center',
+      padding: 24,
+      backgroundColor: Colors.surface,
+      borderBottomWidth: 1,
+      borderBottomColor: Colors.divider,
+    },
+    containerFoto: {
+      position: 'relative',
+      marginBottom: 12,
+    },
+    containerFotoPressionado: {
+      opacity: 0.8,
+    },
+    fotoPerfil: {
+      width: 100,
+      height: 100,
+      borderRadius: 50,
+      borderWidth: 3,
+      borderColor: Colors.primary,
+    },
+    fotoPlaceholder: {
+      width: 100,
+      height: 100,
+      borderRadius: 50,
+      backgroundColor: Colors.background,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 3,
+      borderColor: Colors.divider,
+    },
+    iconeCamera: {
+      position: 'absolute',
+      bottom: 0,
+      right: 0,
+      backgroundColor: Colors.primary,
+      borderRadius: 12,
+      padding: 4,
+      borderWidth: 2,
+      borderColor: Colors.surface,
+    },
+    nomeUsuario: {
+      ...Typography.h2,
+      marginBottom: 4,
+    },
+    emailUsuario: {
+      ...Typography.body,
+      color: Colors.textSecondary,
+    },
+    secao: {
+      marginTop: 16,
+      backgroundColor: Colors.surface,
+      padding: 16,
+      borderTopWidth: 1,
+      borderTopColor: Colors.divider,
+      borderBottomWidth: 1,
+      borderBottomColor: Colors.divider,
+    },
+    tituloSecao: {
+      ...Typography.h3,
+      marginBottom: 16,
+    },
+    listaInfo: {
+      gap: 16,
+    },
+    itemInfo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    iconeInfo: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: Colors.background,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 16,
+    },
+    textoInfo: {
+      flex: 1,
+    },
+    labelInfo: {
+      ...Typography.small,
+      color: Colors.textSecondary,
+  
+      marginBottom: 4,
+    },
+    valorInfo: {
+      fontSize: 16,
+      fontWeight: '600' as '600',
+      color: Colors.textPrimary,
+    },
+    listaAcoes: {
+        gap: 8,
+      },
+      itemAcao: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+      },
+      itemAcaoPressionado: {
+        backgroundColor: Colors.background,
+        borderRadius: 8,
+      },
+      iconeAcao: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: Colors.background,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 16,
+      },
+      textoAcao: {
+        flex: 1,
+      },
+      labelAcao: {
+        fontSize: 16,
+        fontWeight: '500' as '500',
+        color: Colors.textPrimary,
+      },
+      descricaoAcao: {
+        ...Typography.small,
+        color: Colors.textSecondary,
+        marginTop: 2,
+      },
+      modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        justifyContent: 'flex-end',
+      },
+      modalContent: {
+        backgroundColor: Colors.surface,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        maxHeight: '90%',
+      },
+      modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 20,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.divider,
+      },
+      modalTitle: {
+        ...Typography.h3,
+      },
+      modalBody: {
+        padding: 20,
+      },
+      labelInput: {
+        ...Typography.body,
+        fontWeight: '500' as '500',
+        marginBottom: 8,
+      },
+      inputIconContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.background,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: Colors.divider,
+        marginBottom: 16,
+      },
+      inputIcon: {
+        paddingHorizontal: 12,
+      },
+      input: {
+        flex: 1,
+        paddingVertical: 12,
+        fontSize: 16,
+        color: Colors.textPrimary,
+        paddingRight: 12,
+      },
+      modalFooter: {
+        padding: 20,
+        borderTopWidth: 1,
+        borderTopColor: Colors.divider,
+      },
+      botaoSalvar: {
+        backgroundColor: Colors.primary,
+        borderRadius: 8,
+        padding: 16,
+        alignItems: 'center',
+      },
+      botaoSalvarPressionado: {
+        opacity: 0.7,
+      },
+      textoBotaoSalvar: {
+        ...Typography.body,
+        fontWeight: '600' as '600',
+      },
+      itemAprendizado: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.divider,
+      },
+      itemAprendizadoPressionado: {
+        backgroundColor: Colors.background,
+      },
+      textoAprendizado: {
+        flex: 1,
+        marginRight: 16,
+      },
+      tituloAprendizado: {
+        ...Typography.body,
+        fontWeight: '600' as '600',
+        marginBottom: 4,
+      },
+      resumoAprendizado: {
+        ...Typography.small,
+        color: Colors.textSecondary,
+      },
+      textoVazio: {
+        textAlign: 'center',
+        padding: 20,
+        ...Typography.body,
+        color: Colors.textSecondary,
+      },
+      textoCarregando: {
+        textAlign: 'center',
+        padding: 20,
+        ...Typography.body,
+        color: Colors.textSecondary,
+      }
+  });

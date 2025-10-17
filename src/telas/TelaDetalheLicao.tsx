@@ -13,15 +13,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography } from '../estilos/theme';
 import { FirebaseService, Licao, ProgressoLicao } from '../servicos/FirebaseService';
 import { useNotificacao } from '../contextos/NotificacaoContext';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../App';
 
-interface Props {
-  route: {
-    params: {
-      licaoId: string;
-    };
-  };
-  navigation: any;
-}
+type Props = NativeStackScreenProps<RootStackParamList, 'DetalheLicao'>;
+
 
 const categorias = [
   { id: 'orcamento', nome: 'Orçamento', icone: 'wallet-outline', cor: '#4CAF50' },
@@ -30,6 +26,7 @@ const categorias = [
   { id: 'economia', nome: 'Economia', icone: 'leaf-outline', cor: '#8BC34A' },
   { id: 'bancos', nome: 'Bancos', icone: 'business-outline', cor: '#607D8B' },
   { id: 'planejamento', nome: 'Planejamento', icone: 'calendar-outline', cor: '#9C27B0' },
+  { id: 'Geral', nome: 'Geral', icone: 'help-circle-outline', cor: '#95a5a6' },
 ];
 
 export default function TelaDetalheLicao({ route, navigation }: Props) {
@@ -37,7 +34,7 @@ export default function TelaDetalheLicao({ route, navigation }: Props) {
   const [licao, setLicao] = useState<Licao | null>(null);
   const [progresso, setProgresso] = useState<ProgressoLicao | null>(null);
   const [carregando, setCarregando] = useState(true);
-  const { mostrarNotificacao } = useNotificacao();
+  const { mostrarSucesso, mostrarErro } = useNotificacao();
 
   useEffect(() => {
     carregarLicao();
@@ -54,13 +51,12 @@ export default function TelaDetalheLicao({ route, navigation }: Props) {
       setLicao(licaoData);
       setProgresso(progressoData);
       
-      // Marcar como visualizada automaticamente
-      if (!progressoData?.visualizada) {
+      if (licaoData && !progressoData?.visualizada) {
         await marcarComoVisualizada();
       }
     } catch (error) {
       console.error('Erro ao carregar lição:', error);
-      mostrarNotificacao('Erro ao carregar lição', 'error');
+      mostrarErro('Erro', 'Não foi possível carregar a lição');
       navigation.goBack();
     } finally {
       setCarregando(false);
@@ -70,7 +66,11 @@ export default function TelaDetalheLicao({ route, navigation }: Props) {
   const marcarComoVisualizada = async () => {
     try {
       await FirebaseService.marcarLicaoVisualizada(licaoId);
-      setProgresso(prev => prev ? { ...prev, visualizada: true, dataVisualizacao: new Date() } : null);
+      setProgresso(prev => 
+        prev 
+        ? { ...prev, visualizada: true, dataVisualizacao: new Date().toISOString() } 
+        : { licaoId, visualizada: true, salva: false, dataVisualizacao: new Date().toISOString() }
+      );
     } catch (error) {
       console.error('Erro ao marcar como visualizada:', error);
     }
@@ -78,37 +78,34 @@ export default function TelaDetalheLicao({ route, navigation }: Props) {
 
   const toggleSalva = async () => {
     try {
-      const novoStatus = !progresso?.salva;
       await FirebaseService.toggleLicaoSalva(licaoId);
-      setProgresso(prev => prev ? { 
-        ...prev, 
-        salva: novoStatus,
-        dataSalva: novoStatus ? new Date() : undefined
-      } : null);
-      
-      mostrarNotificacao(
-        novoStatus ? 'Lição salva nos favoritos' : 'Lição removida dos favoritos',
-        'success'
+      const novoStatus = !progresso?.salva;
+      setProgresso(prev => 
+        prev 
+        ? { ...prev, salva: novoStatus } 
+        : { licaoId, visualizada: false, salva: true }
       );
+      
+      mostrarSucesso('Sucesso', novoStatus ? 'Lição salva nos favoritos' : 'Lição removida dos favoritos');
     } catch (error) {
       console.error('Erro ao salvar lição:', error);
-      mostrarNotificacao('Erro ao salvar lição', 'error');
+      mostrarErro('Erro', 'Não foi possível salvar a lição');
     }
   };
 
   const abrirVideoExterno = async () => {
-    if (licao?.videoUrl) {
+    if (licao?.videoId) {
       try {
-        await Linking.openURL(licao.videoUrl);
+        await Linking.openURL(licao.videoId);
       } catch (error) {
         console.error('Erro ao abrir vídeo:', error);
-        mostrarNotificacao('Erro ao abrir vídeo', 'error');
+        mostrarErro('Erro', 'Não foi possível abrir o vídeo');
       }
     }
   };
 
   const obterCategoriaInfo = (categoriaId: string) => {
-    return categorias.find(cat => cat.id === categoriaId) || categorias[0];
+    return categorias.find(cat => cat.id.toLowerCase() === categoriaId.toLowerCase()) || categorias.find(c => c.id === 'Geral')!;
   };
 
   if (carregando) {
@@ -170,12 +167,12 @@ export default function TelaDetalheLicao({ route, navigation }: Props) {
             <Text style={styles.categoriaTexto}>{categoriaInfo.nome}</Text>
             <Text style={styles.titulo}>
               {licao.titulo}
-              {licao.geradaPorIA && (
+              {licao.criadoPorIA && (
                 <Text style={styles.badgeIA}> ✨ IA</Text>
               )}
             </Text>
             <Text style={styles.dataPublicacao}>
-              Publicado em {licao.criadoEm.toLocaleDateString()}
+              Publicado em {new Date(licao.dataCriacao).toLocaleDateString('pt-BR')}
             </Text>
           </View>
         </View>
@@ -212,7 +209,7 @@ export default function TelaDetalheLicao({ route, navigation }: Props) {
           <Text style={styles.resumoTexto}>{licao.resumo}</Text>
         </View>
 
-        {licao.tipo === 'video' && licao.videoUrl && (
+        {licao.tipo === 'video' && licao.videoId && (
           <View style={styles.videoContainer}>
             <TouchableOpacity style={styles.botaoVideo} onPress={abrirVideoExterno}>
               <Ionicons name="play-circle" size={48} color={Colors.primary} />
@@ -224,7 +221,7 @@ export default function TelaDetalheLicao({ route, navigation }: Props) {
 
         <View style={styles.conteudoContainer}>
           <Text style={styles.conteudoTitulo}>Conteúdo</Text>
-          <Text style={styles.conteudoTexto}>{licao.conteudo}</Text>
+          <Text style={styles.conteudoTexto}>{licao.conteudoTexto}</Text>
         </View>
 
         <View style={styles.acaoContainer}>
@@ -251,205 +248,204 @@ export default function TelaDetalheLicao({ route, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-    marginTop: 16,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-  },
-  errorText: {
-    fontSize: 18,
-    fontWeight: '600' as '600',
-    color: Colors.textPrimary,
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  botaoVoltar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  botaoSalvar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  conteudo: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  licaoHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 24,
-  },
-  categoriaIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  licaoInfo: {
-    flex: 1,
-  },
-  categoriaTexto: {
-    fontSize: 14,
-    fontWeight: '600' as '600',
-    color: Colors.primary,
-    marginBottom: 4,
-  },
-  titulo: {
-    fontSize: 24,
-    fontWeight: '700' as '700',
-    color: Colors.textPrimary,
-    lineHeight: 32,
-    marginBottom: 8,
-  },
-  badgeIA: {
-    fontSize: 16,
-    fontWeight: '400' as '400',
-    color: Colors.primary,
-  },
-  dataPublicacao: {
-    fontSize: 14,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    gap: 24,
-  },
-  statusItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  statusTexto: {
-    fontSize: 14,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-  },
-  statusTextoAtivo: {
-    color: Colors.success,
-    fontWeight: '600' as '600',
-  },
-  resumoContainer: {
-    marginBottom: 24,
-  },
-  resumoTitulo: {
-    fontSize: 18,
-    fontWeight: '600' as '600',
-    color: Colors.textPrimary,
-    marginBottom: 12,
-  },
-  resumoTexto: {
-    fontSize: 16,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-    lineHeight: 24,
-  },
-  videoContainer: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 24,
-    alignItems: 'center',
-  },
-  botaoVideo: {
-    alignItems: 'center',
-  },
-  textoVideo: {
-    fontSize: 18,
-    fontWeight: '600' as '600',
-    color: Colors.textPrimary,
-    marginTop: 12,
-    marginBottom: 4,
-  },
-  subtextoVideo: {
-    fontSize: 14,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-    textAlign: 'center',
-  },
-  conteudoContainer: {
-    marginBottom: 32,
-  },
-  conteudoTitulo: {
-    fontSize: 18,
-    fontWeight: '600' as '600',
-    color: Colors.textPrimary,
-    marginBottom: 16,
-  },
-  conteudoTexto: {
-    fontSize: 16,
-    fontWeight: '400' as '400',
-    color: Colors.textPrimary,
-    lineHeight: 26,
-  },
-  acaoContainer: {
-    marginBottom: 32,
-  },
-  botaoAcao: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderWidth: 2,
-    borderColor: Colors.primary,
-    gap: 12,
-  },
-  botaoAcaoAtivo: {
-    backgroundColor: Colors.primary,
-  },
-  textoAcao: {
-    fontSize: 16,
-    fontWeight: '600' as '600',
-    color: Colors.primary,
-  },
-  textoAcaoAtivo: {
-    color: Colors.background,
-  },
-  textoBotaoVoltar: {
-    fontSize: 16,
-    fontWeight: '600' as '600',
-    color: Colors.primary,
-  },
-});
-
+    container: {
+      flex: 1,
+      backgroundColor: Colors.background,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loadingText: {
+      fontSize: 16,
+      fontWeight: '400' as '400',
+      color: Colors.textSecondary,
+      marginTop: 16,
+    },
+    errorContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 40,
+    },
+    errorText: {
+      fontSize: 18,
+      fontWeight: '600' as '600',
+      color: Colors.textPrimary,
+      marginTop: 16,
+      marginBottom: 24,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+    },
+    botaoVoltar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: Colors.surface,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    botaoSalvar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: Colors.surface,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    conteudo: {
+      flex: 1,
+      paddingHorizontal: 20,
+    },
+    licaoHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      marginBottom: 24,
+    },
+    categoriaIcon: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 16,
+    },
+    licaoInfo: {
+      flex: 1,
+    },
+    categoriaTexto: {
+      fontSize: 14,
+      fontWeight: '600' as '600',
+      color: Colors.primary,
+      marginBottom: 4,
+    },
+    titulo: {
+      fontSize: 24,
+      fontWeight: '700' as '700',
+      color: Colors.textPrimary,
+      lineHeight: 32,
+      marginBottom: 8,
+    },
+    badgeIA: {
+      fontSize: 16,
+      fontWeight: '400' as '400',
+      color: Colors.primary,
+    },
+    dataPublicacao: {
+      fontSize: 14,
+      fontWeight: '400' as '400',
+      color: Colors.textSecondary,
+    },
+    statusContainer: {
+      flexDirection: 'row',
+      backgroundColor: Colors.surface,
+      borderRadius: 12,
+      padding: 16,
+      marginBottom: 24,
+      gap: 24,
+    },
+    statusItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    statusTexto: {
+      fontSize: 14,
+      fontWeight: '400' as '400',
+      color: Colors.textSecondary,
+    },
+    statusTextoAtivo: {
+      color: Colors.success,
+      fontWeight: '600' as '600',
+    },
+    resumoContainer: {
+      marginBottom: 24,
+    },
+    resumoTitulo: {
+      fontSize: 18,
+      fontWeight: '600' as '600',
+      color: Colors.textPrimary,
+      marginBottom: 12,
+    },
+    resumoTexto: {
+      fontSize: 16,
+      fontWeight: '400' as '400',
+      color: Colors.textSecondary,
+      lineHeight: 24,
+    },
+    videoContainer: {
+      backgroundColor: Colors.surface,
+      borderRadius: 16,
+      padding: 24,
+      marginBottom: 24,
+      alignItems: 'center',
+    },
+    botaoVideo: {
+      alignItems: 'center',
+    },
+    textoVideo: {
+      fontSize: 18,
+      fontWeight: '600' as '600',
+      color: Colors.textPrimary,
+      marginTop: 12,
+      marginBottom: 4,
+    },
+    subtextoVideo: {
+      fontSize: 14,
+      fontWeight: '400' as '400',
+      color: Colors.textSecondary,
+      textAlign: 'center',
+    },
+    conteudoContainer: {
+      marginBottom: 32,
+    },
+    conteudoTitulo: {
+      fontSize: 18,
+      fontWeight: '600' as '600',
+      color: Colors.textPrimary,
+      marginBottom: 16,
+    },
+    conteudoTexto: {
+      fontSize: 16,
+      fontWeight: '400' as '400',
+      color: Colors.textPrimary,
+      lineHeight: 26,
+    },
+    acaoContainer: {
+      marginBottom: 32,
+    },
+    botaoAcao: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: Colors.surface,
+      borderRadius: 12,
+      paddingVertical: 16,
+      paddingHorizontal: 24,
+      borderWidth: 2,
+      borderColor: Colors.primary,
+      gap: 12,
+    },
+    botaoAcaoAtivo: {
+      backgroundColor: Colors.primary,
+    },
+    textoAcao: {
+      fontSize: 16,
+      fontWeight: '600' as '600',
+      color: Colors.primary,
+    },
+    textoAcaoAtivo: {
+      color: Colors.background,
+    },
+    textoBotaoVoltar: {
+      fontSize: 16,
+      fontWeight: '600' as '600',
+      color: Colors.primary,
+    },
+  });

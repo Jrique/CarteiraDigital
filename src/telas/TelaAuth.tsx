@@ -85,7 +85,6 @@ export default function TelaAuth() {
       >
         <ScrollView contentContainerStyle={estilos.scrollContainer}>
           <View style={estilos.conteudo}>
-            {/* Logo/Ícone */}
             <View style={estilos.logoContainer}>
               <View style={estilos.logoCirculo}>
                 <Ionicons name="wallet" size={48} color={Colors.textPrimary} />
@@ -96,7 +95,6 @@ export default function TelaAuth() {
               </Text>
             </View>
 
-            {/* Formulário */}
             <View style={estilos.formulario}>
               {modoRegistro && (
                 <>
@@ -212,14 +210,13 @@ export default function TelaAuth() {
               )}
             </View>
 
-            {/* Recursos */}
             <View style={estilos.recursos}>
               <View style={estilos.recurso}>
                 <Ionicons name="stats-chart" size={24} color={Colors.primary} />
                 <Text style={estilos.textoRecurso}>Relatórios detalhados</Text>
               </View>
               <View style={estilos.recurso}>
-                <Ionicons name="analytics" size={24} color={Colors.primary} />{/* Alterado de 'target' para 'analytics' */}
+                <Ionicons name="flag" size={24} color={Colors.primary} />
                 <Text style={estilos.textoRecurso}>Metas financeiras</Text>
               </View>
               <View style={estilos.recurso}>
@@ -266,7 +263,7 @@ const estilos = StyleSheet.create({
     marginBottom: 8,
   },
   subtitulo: {
-    ...Typography.bodyLarge, // Alterado para bodyLarge
+    ...Typography.bodyLarge, 
     color: Colors.textSecondary,
     textAlign: 'center',
     paddingHorizontal: 20,
@@ -275,8 +272,8 @@ const estilos = StyleSheet.create({
     marginBottom: 32,
   },
   labelInput: {
-    ...Typography.bodySmall, // Alterado para bodySmall
-    fontWeight: '500' as '500', // Corrigido para tipo literal
+    ...Typography.bodySmall, 
+    fontWeight: '500' as '500', 
     color: Colors.textPrimary,
     marginBottom: 8,
   },
@@ -329,9 +326,9 @@ const estilos = StyleSheet.create({
     backgroundColor: Colors.divider,
   },
   textoBotaoPrincipal: {
-    ...Typography.bodyMedium, // Alterado para bodyMedium
+    ...Typography.bodyMedium, 
     color: Colors.buttonText,
-    fontWeight: '600' as '600', // Corrigido para tipo literal
+    fontWeight: '600' as '600', 
   },
   botaoSecundario: {
     padding: 12,
@@ -339,12 +336,12 @@ const estilos = StyleSheet.create({
     marginBottom: 16,
   },
   textoBotaoSecundario: {
-    ...Typography.bodySmall, // Alterado para bodySmall
+    ...Typography.bodySmall, 
     color: Colors.primary,
-    fontWeight: '500' as '500', // Corrigido para tipo literal
+    fontWeight: '500' as '500', 
   },
   textoInfo: {
-    ...Typography.bodySmall, // Alterado para bodySmall
+    ...Typography.bodySmall, 
     color: Colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
@@ -360,11 +357,9 @@ const estilos = StyleSheet.create({
     marginHorizontal: 8,
   },
   textoRecurso: {
-    ...Typography.caption, // Alterado para caption
+    ...Typography.caption, 
     color: Colors.textSecondary,
     marginTop: 8,
     textAlign: 'center',
   },
 });
-
-

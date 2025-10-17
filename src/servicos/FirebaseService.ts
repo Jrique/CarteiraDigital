@@ -67,6 +67,7 @@ export interface Meta {
   dataFim: string;
   categoria: string;
   status: 'ativa' | 'concluida' | 'pausada';
+  progressoPercentual?: number;
 }
 
 export interface Licao {
@@ -78,6 +79,7 @@ export interface Licao {
   videoId?: string;
   dataCriacao: string;
   ativa: boolean;
+  tipo?: 'texto' | 'video';
   criadoPorIA?: boolean;
   criadoPor?: string;
 }
@@ -122,7 +124,6 @@ export interface SalvarLicaoRequest {
 }
 
 class FirebaseServiceClass {
-  // ==================== MÉTODOS DE IA GEMINI ====================
 
   /**
    * Gera uma lição educativa usando IA Gemini
@@ -165,8 +166,6 @@ class FirebaseServiceClass {
       return { totalLicoesGeradas: 0 };
     }
   }
-
-  // ==================== MÉTODOS DE USUÁRIO ====================
 
   /**
    * Obtém o perfil do usuário atual
@@ -212,7 +211,6 @@ class FirebaseServiceClass {
     }
   }
 
-  // ==================== MÉTODOS DE CARTEIRA ====================
 
   /**
    * Lista todas as carteiras do usuário
@@ -284,7 +282,6 @@ class FirebaseServiceClass {
     }
   }
 
-  // ==================== MÉTODOS DE TRANSAÇÃO ====================
 
   /**
    * Lista transações do usuário
@@ -357,7 +354,6 @@ class FirebaseServiceClass {
     }
   }
 
-  // ==================== MÉTODOS DE META ====================
 
   /**
    * Lista metas do usuário
@@ -374,10 +370,18 @@ class FirebaseServiceClass {
       );
 
       const snapshot = await getDocs(q);
-      return snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Meta[];
+      return snapshot.docs.map(doc => {
+        const data = doc.data();
+        const valorAtual = data.valorAtual || 0;
+        const valorMeta = data.valorMeta || 0;
+        const progressoPercentual = valorMeta > 0 ? (valorAtual / valorMeta) * 100 : 0;
+        
+        return {
+          id: doc.id,
+          ...data,
+          progressoPercentual
+        } as Meta
+      });
     } catch (error) {
       console.error('Erro ao listar metas:', error);
       return [];
@@ -429,7 +433,6 @@ class FirebaseServiceClass {
     }
   }
 
-  // ==================== MÉTODOS DE LIÇÃO ====================
 
   /**
    * Lista lições disponíveis
@@ -482,7 +485,6 @@ class FirebaseServiceClass {
     }
   }
 
-  // ==================== MÉTODOS DE PROGRESSO ====================
 
   /**
    * Obtém o progresso de lições do usuário
@@ -579,7 +581,6 @@ class FirebaseServiceClass {
     }
   }
 
-  // ==================== MÉTODOS DE DASHBOARD ====================
 
   /**
    * Obtém dados do dashboard
@@ -650,4 +651,3 @@ class FirebaseServiceClass {
 // Exportar instância única
 export const FirebaseService = new FirebaseServiceClass();
 export default FirebaseService;
-

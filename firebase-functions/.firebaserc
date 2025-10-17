@@ -1,6 +1,7 @@
 {
   "projects": {
     "default": "yourwallet-51a71"
-  }
+  },
+  "targets": {},
+  "etags": {}
 }
-

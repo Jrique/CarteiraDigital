@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   SafeAreaView,
   RefreshControl,
   Alert,
@@ -15,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contextos/AuthContext';
 import FirebaseService, { Transacao } from '../servicos/FirebaseService';
 import { Colors, Typography } from '../estilos/theme';
+import { BarChart } from 'react-native-gifted-charts';
 
 const { width } = Dimensions.get('window');
 
@@ -32,39 +32,24 @@ export default function TelaRelatorios() {
   const [filtroTempo, setFiltroTempo] = useState<'dia' | 'mes' | 'ano'>('mes');
   const [periodoAtual, setPeriodoAtual] = useState(new Date());
 
-  const carregarDados = useCallback(async () => {
-    if (!usuario) return;
-
-    try {
-      let dados: DadosGrafico[] = [];
-
-      if (filtroTempo === 'dia') {
-        dados = await carregarDadosDiarios();
-      } else if (filtroTempo === 'mes') {
-        dados = await carregarDadosMensais();
-      } else {
-        dados = await carregarDadosAnuais();
-      }
-
-      setDadosGrafico(dados);
-    } catch (error) {
-      console.error('Erro ao carregar dados do gráfico:', error);
-      Alert.alert('Erro', 'Não foi possível carregar os dados do gráfico');
-    } finally {
-      setCarregando(false);
-    }
-  }, [usuario, filtroTempo, periodoAtual]);
+  const obterTransacoesPorPeriodo = async (inicio: Date, fim: Date): Promise<Transacao[]> => {
+    const todasTransacoes = await FirebaseService.listarTransacoes();
+    
+    return todasTransacoes.filter(transacao => {
+      const dataTransacao = new Date(transacao.data);
+      return dataTransacao >= inicio && dataTransacao <= fim;
+    });
+  };
 
   const carregarDadosDiarios = async (): Promise<DadosGrafico[]> => {
     const dados: DadosGrafico[] = [];
     const hoje = new Date(periodoAtual);
     
-    // Últimos 7 dias
     for (let i = 6; i >= 0; i--) {
       const data = new Date(hoje);
       data.setDate(hoje.getDate() - i);
       
-      const inicioDia = new Date(data.getFullYear(), data.getMonth(), data.getDate());
+      const inicioDia = new Date(data.getFullYear(), data.getMonth(), data.getDate(), 0, 0, 0);
       const fimDia = new Date(data.getFullYear(), data.getMonth(), data.getDate(), 23, 59, 59);
 
       const transacoes = await obterTransacoesPorPeriodo(inicioDia, fimDia);
@@ -90,10 +75,10 @@ export default function TelaRelatorios() {
   const carregarDadosMensais = async (): Promise<DadosGrafico[]> => {
     const dados: DadosGrafico[] = [];
     const anoAtual = periodoAtual.getFullYear();
+    const mesAtual = periodoAtual.getMonth();
     
-    // Últimos 6 meses
     for (let i = 5; i >= 0; i--) {
-      const data = new Date(anoAtual, periodoAtual.getMonth() - i, 1);
+      const data = new Date(anoAtual, mesAtual - i, 1);
       const inicioMes = new Date(data.getFullYear(), data.getMonth(), 1);
       const fimMes = new Date(data.getFullYear(), data.getMonth() + 1, 0, 23, 59, 59);
 
@@ -123,7 +108,6 @@ export default function TelaRelatorios() {
     const dados: DadosGrafico[] = [];
     const anoAtual = periodoAtual.getFullYear();
     
-    // Últimos 5 anos
     for (let i = 4; i >= 0; i--) {
       const ano = anoAtual - i;
       const inicioAno = new Date(ano, 0, 1);
@@ -140,7 +124,7 @@ export default function TelaRelatorios() {
         .reduce((total, t) => total + t.valor, 0);
 
       dados.push({
-        periodo: ano.toString(),
+        periodo: ano.toString().slice(-2),
         receitas,
         despesas,
       });
@@ -148,17 +132,31 @@ export default function TelaRelatorios() {
 
     return dados;
   };
+  
+  const carregarDados = useCallback(async () => {
+    if (!usuario) return;
 
-  const obterTransacoesPorPeriodo = async (inicio: Date, fim: Date): Promise<Transacao[]> => {
-    // Aqui você implementaria a busca no Firebase com filtro de data
-    // Por simplicidade, vou usar o método existente e filtrar localmente
-    const todasTransacoes = await FirebaseService.listarTransacoes();
-    
-    return todasTransacoes.filter(transacao => {
-      const dataTransacao = new Date(transacao.data);
-      return dataTransacao >= inicio && dataTransacao <= fim;
-    });
-  };
+    try {
+      setCarregando(true);
+      let dados: DadosGrafico[] = [];
+
+      if (filtroTempo === 'dia') {
+        dados = await carregarDadosDiarios();
+      } else if (filtroTempo === 'mes') {
+        dados = await carregarDadosMensais();
+      } else {
+        dados = await carregarDadosAnuais();
+      }
+      
+      setDadosGrafico(dados.reverse());
+    } catch (error) {
+      console.error('Erro ao carregar dados do gráfico:', error);
+      Alert.alert('Erro', 'Não foi possível carregar os dados do gráfico');
+    } finally {
+      setCarregando(false);
+    }
+  }, [usuario, filtroTempo, periodoAtual]);
+
 
   const onRefresh = useCallback(async () => {
     setAtualizando(true);
@@ -195,20 +193,33 @@ export default function TelaRelatorios() {
   };
 
   const renderGraficoBarras = () => {
-    if (dadosGrafico.length === 0) {
+    if (!dadosGrafico || dadosGrafico.length === 0) {
       return (
         <View style={estilos.semDadosGrafico}>
           <Text style={estilos.textoSemDados}>Nenhum dado disponível</Text>
         </View>
       );
     }
-
-    const valorMaximo = Math.max(
-      ...dadosGrafico.map(item => Math.max(item.receitas, item.despesas))
-    );
-
-    const larguraBarra = (width - 80) / dadosGrafico.length - 20;
-
+  
+    const barWidth = 10;
+    const spacingBetweenGroups = 30;
+  
+    const chartData = dadosGrafico.flatMap(item => ([
+      {
+        value: item.receitas || 0,
+        label: item.periodo,
+        spacing: spacingBetweenGroups,
+        labelTextStyle: { color: Colors.textSecondary },
+        frontColor: Colors.success,
+      },
+      {
+        value: item.despesas || 0,
+        frontColor: Colors.error,
+      },
+    ]));
+  
+    const valorMaximo = Math.max(...dadosGrafico.map(item => Math.max(item.receitas, item.despesas)));
+  
     return (
       <View style={estilos.grafico}>
         <View style={estilos.legendaGrafico}>
@@ -221,58 +232,29 @@ export default function TelaRelatorios() {
             <Text style={estilos.textoLegenda}>Despesas</Text>
           </View>
         </View>
+  
+        <BarChart
+          data={chartData}
+          barWidth={barWidth}
+          initialSpacing={10}
+          spacing={2}
+          barBorderRadius={4}
+          
+          yAxisThickness={1}
+          yAxisColor={Colors.divider}
+          yAxisTextStyle={{ color: Colors.textSecondary }}
+          yAxisLabelPrefix="R$ "
+          yAxisLabelWidth={55}
+          noOfSections={4}
+          maxValue={valorMaximo > 0 ? valorMaximo * 1.2 : 100}
+          rulesType="dashed"
+          rulesColor={'rgba(255, 255, 255, 0.1)'}
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={estilos.scrollGrafico}>
-          <View style={estilos.containerBarras}>
-            {dadosGrafico.map((item, index) => (
-              <View key={index} style={[estilos.grupoBarra, { width: larguraBarra + 20 }]}>
-                <View style={estilos.barrasContainer}>
-                  {/* Barra de Receitas */}
-                  <View style={estilos.barraIndividual}>
-                    <View 
-                      style={[
-                        estilos.barra,
-                        {
-                          height: valorMaximo > 0 ? (item.receitas / valorMaximo) * 120 : 0,
-                          backgroundColor: Colors.success,
-                          width: larguraBarra / 2 - 2,
-                        }
-                      ]}
-                    />
-                    <Text style={estilos.valorBarra}>
-                      {item.receitas > 0 ? `R$ ${item.receitas.toLocaleString('pt-BR', { 
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0 
-                      })}` : ''}
-                    </Text>
-                  </View>
+          xAxisThickness={1}
+          xAxisColor={Colors.divider}
 
-                  {/* Barra de Despesas */}
-                  <View style={estilos.barraIndividual}>
-                    <View 
-                      style={[
-                        estilos.barra,
-                        {
-                          height: valorMaximo > 0 ? (item.despesas / valorMaximo) * 120 : 0,
-                          backgroundColor: Colors.error,
-                          width: larguraBarra / 2 - 2,
-                        }
-                      ]}
-                    />
-                    <Text style={estilos.valorBarra}>
-                      {item.despesas > 0 ? `R$ ${item.despesas.toLocaleString('pt-BR', { 
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 0 
-                      })}` : ''}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={estilos.labelPeriodo}>{item.periodo}</Text>
-              </View>
-            ))}
-          </View>
-        </ScrollView>
+          isAnimated
+        />
       </View>
     );
   };
@@ -299,18 +281,17 @@ export default function TelaRelatorios() {
 
   return (
     <SafeAreaView style={estilos.container}>
-      {/* Cabeçalho */}
       <View style={estilos.cabecalho}>
         <Text style={estilos.titulo}>Estatísticas</Text>
       </View>
 
       <ScrollView
         style={estilos.conteudo}
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={atualizando} onRefresh={onRefresh} tintColor={Colors.primary} />
         }
       >
-        {/* Filtros de Tempo */}
         <View style={estilos.secao}>
           <Text style={estilos.tituloSecao}>Período de Análise</Text>
           
@@ -336,7 +317,6 @@ export default function TelaRelatorios() {
           </View>
         </View>
 
-        {/* Resumo Financeiro */}
         <View style={estilos.secao}>
           <Text style={estilos.tituloSecao}>Resumo - {obterTituloPeriodo()}</Text>
           
@@ -380,7 +360,6 @@ export default function TelaRelatorios() {
           </View>
         </View>
 
-        {/* Gráfico de Barras */}
         <View style={estilos.secao}>
           <View style={estilos.cabecalhoGrafico}>
             <Text style={estilos.tituloSecao}>Receitas vs Despesas</Text>
@@ -404,7 +383,6 @@ export default function TelaRelatorios() {
           {renderGraficoBarras()}
         </View>
 
-        {/* Análise Detalhada */}
         <View style={estilos.secao}>
           <Text style={estilos.tituloSecao}>Análise Detalhada</Text>
           
@@ -446,9 +424,7 @@ export default function TelaRelatorios() {
               <Text style={estilos.labelAnalise}>Melhor Período (Receitas)</Text>
               <Text style={estilos.valorAnalise}>
                 {dadosGrafico.length > 0 
-                  ? dadosGrafico.reduce((melhor, atual) => 
-                      atual.receitas > melhor.receitas ? atual : melhor
-                    ).periodo
+                  ? [...dadosGrafico].sort((a, b) => b.receitas - a.receitas)[0].periodo
                   : 'N/A'
                 }
               </Text>
@@ -458,9 +434,7 @@ export default function TelaRelatorios() {
               <Text style={estilos.labelAnalise}>Pior Período (Despesas)</Text>
               <Text style={estilos.valorAnalise}>
                 {dadosGrafico.length > 0 
-                  ? dadosGrafico.reduce((pior, atual) => 
-                      atual.despesas > pior.despesas ? atual : pior
-                    ).periodo
+                  ? [...dadosGrafico].sort((a, b) => b.despesas - a.despesas)[0].periodo
                   : 'N/A'
                 }
               </Text>
@@ -473,229 +447,197 @@ export default function TelaRelatorios() {
 }
 
 const estilos = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  carregando: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cabecalho: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
-  },
-  titulo: {
-    ...Typography.h2,
-    color: Colors.textPrimary,
-  },
-  conteudo: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  secao: {
-    marginBottom: 20,
-  },
-  tituloSecao: {
-    ...Typography.h3,
-    color: Colors.textPrimary,
-    marginBottom: 15,
-  },
-  filtrosTempo: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    backgroundColor: Colors.card,
-    borderRadius: 10,
-    padding: 5,
-    marginBottom: 20,
-  },
-  botaoFiltro: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  botaoFiltroAtivo: {
-    backgroundColor: Colors.primary,
-  },
-  botaoFiltroPressionado: {
-    opacity: 0.7,
-  },
-  textoFiltro: {
-    ...Typography.bodyMedium,
-    color: Colors.textSecondary,
-  },
-  textoFiltroAtivo: {
-    color: Colors.buttonText,
-    fontWeight: 'bold' as 'bold',
-  },
-  cardsResumo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 15,
-  },
-  cardResumo: {
-    backgroundColor: Colors.card,
-    borderRadius: 15,
-    padding: 15,
-    width: '48%',
-    alignItems: 'center',
-    elevation: 3,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-  },
-  iconeCard: {
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 10,
-  },
-  labelCard: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
-    marginBottom: 5,
-  },
-  valorCard: {
-    ...Typography.h3,
-    fontWeight: 'bold' as 'bold',
-  },
-  cardSaldo: {
-    backgroundColor: Colors.card,
-    borderRadius: 15,
-    padding: 20,
-    alignItems: 'center',
-    elevation: 3,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-  },
-  valorCardGrande: {
-    ...Typography.h2,
-    fontWeight: 'bold' as 'bold',
-    marginTop: 10,
-  },
-  cabecalhoGrafico: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  navegacaoGrafico: {
-    flexDirection: 'row',
-  },
-  botaoNavegacao: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: Colors.card,
-    marginLeft: 10,
-  },
-  botaoNavegacaoPressionado: {
-    opacity: 0.7,
-  },
-  grafico: {
-    backgroundColor: Colors.card,
-    borderRadius: 15,
-    padding: 15,
-    elevation: 3,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-  },
-  legendaGrafico: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginBottom: 15,
-  },
-  itemLegenda: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 10,
-  },
-  corLegenda: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 5,
-  },
-  textoLegenda: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
-  },
-  scrollGrafico: {
-    // Estilos para o scroll do gráfico
-  },
-  containerBarras: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 150,
-    paddingHorizontal: 10,
-  },
-  grupoBarra: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginHorizontal: 5,
-  },
-  barrasContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: '100%',
-  },
-  barraIndividual: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginHorizontal: 2,
-  },
-  barra: {
-    borderRadius: 5,
-  },
-  valorBarra: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    marginTop: 5,
-    transform: [{ rotate: '-45deg' }],
-    position: 'absolute',
-    bottom: -20,
-  },
-  labelPeriodo: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    marginTop: 10,
-  },
-  semDadosGrafico: {
-    alignItems: 'center',
-    paddingVertical: 50,
-  },
-  cardAnalise: {
-    backgroundColor: Colors.card,
-    borderRadius: 15,
-    padding: 15,
-    elevation: 3,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-  },
-  itemAnalise: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
-  },
-  labelAnalise: {
-    ...Typography.bodyMedium,
-    color: Colors.textSecondary,
-  },
-  valorAnalise: {
-    ...Typography.bodyMedium,
-    color: Colors.textPrimary,
-    fontWeight: 'bold' as 'bold',
-  },
-});
-
-
+    container: {
+      flex: 1,
+      backgroundColor: Colors.background,
+    },
+    carregando: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    cabecalho: {
+      padding: 20,
+      paddingTop: 40,
+      borderBottomWidth: 1,
+      borderBottomColor: Colors.divider,
+    },
+    titulo: {
+      ...Typography.h2,
+      color: Colors.textPrimary,
+      textAlign: 'center',
+    },
+    conteudo: {
+      flex: 1,
+    },
+    secao: {
+      marginTop: 20,
+      paddingHorizontal: 20,
+    },
+    tituloSecao: {
+      ...Typography.h3,
+      color: Colors.textPrimary,
+      marginBottom: 15,
+    },
+    filtrosTempo: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      backgroundColor: Colors.card,
+      borderRadius: 10,
+      padding: 5,
+    },
+    botaoFiltro: {
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: 8,
+      alignItems: 'center',
+    },
+    botaoFiltroAtivo: {
+      backgroundColor: Colors.primary,
+    },
+    botaoFiltroPressionado: {
+      opacity: 0.7,
+    },
+    textoFiltro: {
+      ...Typography.bodyMedium,
+      color: Colors.textSecondary,
+    },
+    textoFiltroAtivo: {
+      color: Colors.buttonText,
+      fontWeight: 'bold' as 'bold',
+    },
+    cardsResumo: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 15,
+      gap: 15,
+    },
+    cardResumo: {
+      backgroundColor: Colors.card,
+      borderRadius: 15,
+      padding: 15,
+      flex: 1,
+      alignItems: 'center',
+      elevation: 3,
+      shadowColor: Colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.23,
+      shadowRadius: 2.62,
+    },
+    iconeCard: {
+      borderRadius: 10,
+      padding: 10,
+      marginBottom: 10,
+    },
+    labelCard: {
+      ...Typography.bodySmall,
+      color: Colors.textSecondary,
+      marginBottom: 5,
+    },
+    valorCard: {
+      ...Typography.h3,
+      fontWeight: 'bold' as 'bold',
+    },
+    cardSaldo: {
+      backgroundColor: Colors.card,
+      borderRadius: 15,
+      padding: 20,
+      alignItems: 'center',
+      elevation: 3,
+      shadowColor: Colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.23,
+      shadowRadius: 2.62,
+    },
+    valorCardGrande: {
+      ...Typography.h2,
+      fontWeight: 'bold' as 'bold',
+      marginTop: 10,
+    },
+    cabecalhoGrafico: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 15,
+    },
+    navegacaoGrafico: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    botaoNavegacao: {
+      padding: 8,
+      borderRadius: 8,
+      backgroundColor: Colors.card,
+    },
+    botaoNavegacaoPressionado: {
+      opacity: 0.7,
+    },
+    grafico: {
+      backgroundColor: Colors.card,
+      borderRadius: 15,
+      paddingVertical: 20,
+      paddingHorizontal: 10,
+      elevation: 3,
+      shadowColor: Colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.23,
+      shadowRadius: 2.62,
+    },
+    legendaGrafico: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      marginBottom: 20,
+      paddingLeft: 20,
+    },
+    itemLegenda: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: 10,
+    },
+    corLegenda: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      marginRight: 5,
+    },
+    textoLegenda: {
+      ...Typography.bodySmall,
+      color: Colors.textSecondary,
+    },
+    semDadosGrafico: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 50,
+      height: 250,
+    },
+    textoSemDados: {
+      color: Colors.textSecondary,
+    },
+    cardAnalise: {
+      backgroundColor: Colors.card,
+      borderRadius: 15,
+      padding: 15,
+      elevation: 3,
+      shadowColor: Colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.23,
+      shadowRadius: 2.62,
+      marginBottom: 30,
+    },
+    itemAnalise: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: Colors.divider,
+    },
+    labelAnalise: {
+      ...Typography.bodyMedium,
+      color: Colors.textSecondary,
+    },
+    valorAnalise: {
+      ...Typography.bodyMedium,
+      color: Colors.textPrimary,
+      fontWeight: 'bold' as 'bold',
+    },
+  });

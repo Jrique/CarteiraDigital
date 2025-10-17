@@ -1,16 +1,16 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
 
-// Suas credenciais do Firebase
-// ATENÇÃO: Substitua os valores abaixo pelas suas próprias credenciais do Firebase!
+
 const firebaseConfig = {
-  apiKey: "AIzaSyBdKU-Vtlkhyqpf5y5NSWVGoZ4__OLxLqA",
-  authDomain: "yourwallet-51a71.firebaseapp.com",
-  projectId: "yourwallet-51a71",
-  storageBucket: "yourwallet-51a71.firebasestorage.app",
-  messagingSenderId: "429605884515",
-  appId: "1:429605884515:web:f6343afd5f80f4dbe05e56"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID
 };
 
 // Inicializa o Firebase
@@ -18,4 +18,8 @@ const app = initializeApp(firebaseConfig);
 
 // Exporta os serviços que você vai usar
 export const db = getFirestore(app);
-export const auth = getAuth(app);
+
+// Inicializa o Auth com persistência para React Native
+export const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+});

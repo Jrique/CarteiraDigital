@@ -21,7 +21,7 @@ import DropdownModerno from '../componentes/DropdownModerno';
 
 export default function TelaMetas() {
   const { usuario } = useAuth();
-  const { mostrarNotificacao } = useNotificacao();
+  const { mostrarSucesso, mostrarErro } = useNotificacao();
   const [metas, setMetas] = useState<Meta[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [atualizando, setAtualizando] = useState(false);
@@ -34,7 +34,7 @@ export default function TelaMetas() {
   const [formMeta, setFormMeta] = useState({
     titulo: '',
     descricao: '',
-    valorObjetivo: '',
+    valorMeta: '',
     valorAtual: '',
     categoria: '',
     dataFim: '',
@@ -43,18 +43,20 @@ export default function TelaMetas() {
 
   const carregarMetas = useCallback(async () => {
     if (!usuario) return;
-
+  
     try {
-      const filtros = filtroStatus !== 'todas' ? { status: filtroStatus } : {};
-      const metasData = await FirebaseService.listarMetas();
+      let metasData = await FirebaseService.listarMetas();
+      if (filtroStatus !== 'todas') {
+        metasData = metasData.filter(meta => meta.status === filtroStatus);
+      }
       setMetas(metasData);
     } catch (error) {
       console.error('Erro ao carregar metas:', error);
-      mostrarNotificacao('Erro', 'Não foi possível carregar as metas', 'error');
+      mostrarErro('Erro', 'Não foi possível carregar as metas');
     } finally {
       setCarregando(false);
     }
-  }, [usuario, filtroStatus, mostrarNotificacao]);
+  }, [usuario, filtroStatus, mostrarErro]);
 
   const onRefresh = useCallback(async () => {
     setAtualizando(true);
@@ -70,7 +72,7 @@ export default function TelaMetas() {
     setFormMeta({
       titulo: '',
       descricao: '',
-      valorObjetivo: '',
+      valorMeta: '',
       valorAtual: '0',
       categoria: '',
       dataFim: '',
@@ -83,10 +85,10 @@ export default function TelaMetas() {
     setFormMeta({
       titulo: meta.titulo,
       descricao: meta.descricao || '',
-      valorObjetivo: meta.valorMeta.toString(),
+      valorMeta: meta.valorMeta.toString(),
       valorAtual: meta.valorAtual.toString(),
       categoria: meta.categoria,
-      dataFim: meta.dataFim instanceof Date ? meta.dataFim.toISOString().split('T')[0] : meta.dataFim,
+      dataFim: meta.dataFim,
     });
     setModalEdicao(true);
   };
@@ -98,36 +100,35 @@ export default function TelaMetas() {
   };
 
   const criarMeta = async () => {
-    if (!usuario || !formMeta.titulo || !formMeta.valorObjetivo || !formMeta.categoria || !formMeta.dataFim) {
-      mostrarNotificacao('Erro', 'Por favor, preencha todos os campos obrigatórios', 'error');
+    if (!usuario || !formMeta.titulo || !formMeta.valorMeta || !formMeta.categoria || !formMeta.dataFim) {
+      mostrarErro('Erro', 'Por favor, preencha todos os campos obrigatórios');
       return;
     }
 
     try {
       await FirebaseService.criarMeta({
-        userId: usuario.uid,
         titulo: formMeta.titulo,
         descricao: formMeta.descricao,
-        valorObjetivo: parseFloat(formMeta.valorObjetivo),
+        valorMeta: parseFloat(formMeta.valorMeta),
         valorAtual: parseFloat(formMeta.valorAtual) || 0,
         categoria: formMeta.categoria,
         status: 'ativa',
-        dataInicio: new Date(),
-        dataFim: new Date(formMeta.dataFim),
+        dataInicio: new Date().toISOString(),
+        dataFim: formMeta.dataFim,
       });
 
       setModalMeta(false);
-      mostrarNotificacao('Sucesso', 'Meta criada com sucesso!', 'success');
-      carregarMetas();
+      mostrarSucesso('Sucesso', 'Meta criada com sucesso!');
+      onRefresh();
     } catch (error) {
       console.error('Erro ao criar meta:', error);
-      mostrarNotificacao('Erro', 'Não foi possível criar a meta', 'error');
+      mostrarErro('Erro', 'Não foi possível criar a meta');
     }
   };
 
   const atualizarMeta = async () => {
-    if (!metaEditando || !formMeta.titulo || !formMeta.valorObjetivo || !formMeta.categoria || !formMeta.dataFim) {
-      mostrarNotificacao('Erro', 'Por favor, preencha todos os campos obrigatórios', 'error');
+    if (!metaEditando || !formMeta.titulo || !formMeta.valorMeta || !formMeta.categoria || !formMeta.dataFim) {
+      mostrarErro('Erro', 'Por favor, preencha todos os campos obrigatórios');
       return;
     }
 
@@ -135,48 +136,48 @@ export default function TelaMetas() {
       await FirebaseService.atualizarMeta(metaEditando.id!, {
         titulo: formMeta.titulo,
         descricao: formMeta.descricao,
-        valorObjetivo: parseFloat(formMeta.valorObjetivo),
-        valorAtual: parseFloat(formMeta.valorAtual),
+        valorMeta: parseFloat(formMeta.valorMeta),
         categoria: formMeta.categoria,
-        dataFim: new Date(formMeta.dataFim),
+        dataFim: formMeta.dataFim,
       });
 
       setModalEdicao(false);
       setMetaEditando(null);
-      mostrarNotificacao('Sucesso', 'Meta atualizada com sucesso!', 'success');
-      carregarMetas();
+      mostrarSucesso('Sucesso', 'Meta atualizada com sucesso!');
+      onRefresh();
     } catch (error) {
       console.error('Erro ao atualizar meta:', error);
-      mostrarNotificacao('Erro', 'Não foi possível atualizar a meta', 'error');
+      mostrarErro('Erro', 'Não foi possível atualizar a meta');
     }
   };
 
   const atualizarProgresso = async () => {
     if (!metaProgresso || !valorProgresso) {
-      mostrarNotificacao('Erro', 'Por favor, digite um valor', 'error');
+      mostrarErro('Erro', 'Por favor, digite um valor');
       return;
     }
 
     try {
-      await FirebaseService.atualizarProgressoMeta(metaProgresso.id!, parseFloat(valorProgresso));
+      const novoValor = metaProgresso.valorAtual + parseFloat(valorProgresso);
+      await FirebaseService.atualizarMeta(metaProgresso.id!, { valorAtual: novoValor });
       setModalProgresso(false);
       setMetaProgresso(null);
-      mostrarNotificacao('Sucesso', 'Progresso atualizado com sucesso!', 'success');
-      carregarMetas();
+      mostrarSucesso('Sucesso', 'Progresso atualizado com sucesso!');
+      onRefresh();
     } catch (error) {
       console.error('Erro ao atualizar progresso:', error);
-      mostrarNotificacao('Erro', 'Não foi possível atualizar o progresso', 'error');
+      mostrarErro('Erro', 'Não foi possível atualizar o progresso');
     }
   };
 
   const alterarStatusMeta = async (meta: Meta, novoStatus: 'ativa' | 'pausada' | 'concluida') => {
     try {
       await FirebaseService.atualizarMeta(meta.id!, { status: novoStatus });
-      mostrarNotificacao('Sucesso', `Meta ${novoStatus === 'ativa' ? 'ativada' : novoStatus === 'pausada' ? 'pausada' : 'concluída'} com sucesso!`, 'success');
-      carregarMetas();
+      mostrarSucesso('Sucesso', `Meta ${novoStatus === 'ativa' ? 'ativada' : novoStatus === 'pausada' ? 'pausada' : 'concluída'} com sucesso!`);
+      onRefresh();
     } catch (error) {
       console.error('Erro ao alterar status da meta:', error);
-      mostrarNotificacao('Erro', 'Não foi possível alterar o status da meta', 'error');
+      mostrarErro('Erro', 'Não foi possível alterar o status da meta');
     }
   };
 
@@ -192,11 +193,11 @@ export default function TelaMetas() {
           onPress: async () => {
             try {
               await FirebaseService.excluirMeta(meta.id!); 
-              mostrarNotificacao('Sucesso', 'Meta excluída com sucesso!', 'success');
-              carregarMetas();
+              mostrarSucesso('Sucesso', 'Meta excluída com sucesso!');
+              onRefresh();
             } catch (error) {
               console.error('Erro ao excluir meta:', error);
-              mostrarNotificacao('Erro', 'Não foi possível excluir a meta', 'error');
+              mostrarErro('Erro', 'Não foi possível excluir a meta');
             }
           },
         },
@@ -250,7 +251,6 @@ export default function TelaMetas() {
 
   return (
     <SafeAreaView style={estilos.container}>
-      {/* Cabeçalho */}
       <View style={estilos.cabecalho}>
         <Text style={estilos.titulo}>Metas</Text>
         <Pressable 
@@ -261,7 +261,6 @@ export default function TelaMetas() {
         </Pressable>
       </View>
 
-      {/* Filtros */}
       <View style={estilos.filtros}>
         {filtros.map(({ key, label }) => (
           <Pressable
@@ -283,7 +282,6 @@ export default function TelaMetas() {
         ))}
       </View>
 
-      {/* Lista de Metas */}
       <ScrollView
         style={estilos.conteudo}
         refreshControl={
@@ -292,7 +290,7 @@ export default function TelaMetas() {
       >
         {metas.length === 0 ? (
           <View style={estilos.semDados}>
-            <Ionicons name="target-outline" size={64} color={Colors.divider} />
+            <Ionicons name="flag-outline" size={64} color={Colors.divider} />
             <Text style={estilos.textoSemDados}>Nenhuma meta encontrada</Text>
             <Text style={estilos.subtextoSemDados}>
               Toque no botão + para criar sua primeira meta
@@ -340,7 +338,7 @@ export default function TelaMetas() {
                   <View style={estilos.progressoInfo}>
                     <Text style={estilos.progressoTexto}>
                       R$ {meta.valorAtual.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} / 
-                      R$ {meta.valorObjetivo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      R$ {meta.valorMeta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </Text>
                     <Text style={estilos.percentualProgresso}>
                       {meta.progressoPercentual?.toFixed(1)}%
@@ -361,7 +359,7 @@ export default function TelaMetas() {
 
                 <View style={estilos.dataContainer}>
                   <Text style={estilos.dataTexto}>
-                    Prazo: {meta.dataFim instanceof Date ? meta.dataFim.toLocaleDateString('pt-BR') : new Date(meta.dataFim).toLocaleDateString('pt-BR')}
+                    Prazo: {new Date(meta.dataFim).toLocaleDateString('pt-BR')}
                   </Text>
                   {meta.status === 'ativa' && (
                     <View style={estilos.acoesStatus}>
@@ -431,7 +429,6 @@ export default function TelaMetas() {
                 valorSelecionado={formMeta.categoria}
                 onSelecionar={(value) => setFormMeta(prev => ({ ...prev, categoria: value }))}
                 placeholder="Selecione a categoria"
-                estilo={estilos.inputContainer}
               />
 
               <Text style={estilos.labelInput}>Valor Objetivo *</Text>
@@ -441,8 +438,8 @@ export default function TelaMetas() {
                   style={estilos.input}
                   placeholder="0,00"
                   placeholderTextColor={Colors.placeholder}
-                  value={formMeta.valorObjetivo}
-                  onChangeText={(text) => setFormMeta(prev => ({ ...prev, valorObjetivo: text }))}
+                  value={formMeta.valorMeta}
+                  onChangeText={(text) => setFormMeta(prev => ({ ...prev, valorMeta: text }))}
                   keyboardType="numeric"
                 />
               </View>
@@ -532,7 +529,6 @@ export default function TelaMetas() {
                 valorSelecionado={formMeta.categoria}
                 onSelecionar={(value) => setFormMeta(prev => ({ ...prev, categoria: value }))}
                 placeholder="Selecione a categoria"
-                estilo={estilos.inputContainer}
               />
 
               <Text style={estilos.labelInput}>Valor Objetivo *</Text>
@@ -542,21 +538,8 @@ export default function TelaMetas() {
                   style={estilos.input}
                   placeholder="0,00"
                   placeholderTextColor={Colors.placeholder}
-                  value={formMeta.valorObjetivo}
-                  onChangeText={(text) => setFormMeta(prev => ({ ...prev, valorObjetivo: text }))}
-                  keyboardType="numeric"
-                />
-              </View>
-
-              <Text style={estilos.labelInput}>Valor Atual</Text>
-              <View style={estilos.inputIconContainer}>
-                <Ionicons name="wallet-outline" size={20} color={Colors.textSecondary} style={estilos.inputIcon} />
-                <TextInput
-                  style={estilos.input}
-                  placeholder="0,00"
-                  placeholderTextColor={Colors.placeholder}
-                  value={formMeta.valorAtual}
-                  onChangeText={(text) => setFormMeta(prev => ({ ...prev, valorAtual: text }))}
+                  value={formMeta.valorMeta}
+                  onChangeText={(text) => setFormMeta(prev => ({ ...prev, valorMeta: text }))}
                   keyboardType="numeric"
                 />
               </View>
@@ -643,275 +626,271 @@ export default function TelaMetas() {
 }
 
 const estilos = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  carregando: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cabecalho: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
-  },
-  titulo: {
-    ...Typography.h2,
-    color: Colors.textPrimary,
-  },
-  botaoAdicionar: {
-    backgroundColor: Colors.primary,
-    borderRadius: 10,
-    padding: 8,
-  },
-  botaoAdicionarPressionado: {
-    opacity: 0.8,
-  },
-  filtros: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  botaoFiltro: {
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    borderRadius: 20,
-    backgroundColor: Colors.card,
-    borderWidth: 1,
-    borderColor: Colors.divider,
-  },
-  botaoFiltroAtivo: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  botaoFiltroPressionado: {
-    opacity: 0.7,
-  },
-  textoFiltro: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
-  },
-  textoFiltroAtivo: {
-    color: Colors.buttonText,
-    fontWeight: 'bold' as 'bold',
-  },
-  conteudo: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  semDados: {
-    alignItems: 'center',
-    paddingVertical: 50,
-  },
-  textoSemDados: {
-    ...Typography.bodyMedium,
-    color: Colors.textSecondary,
-    marginTop: 10,
-  },
-  subtextoSemDados: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
-    textAlign: 'center',
-    marginTop: 5,
-  },
-  listaMetas: {
-    // Estilos para a lista de metas
-  },
-  itemMeta: {
-    backgroundColor: Colors.card,
-    borderRadius: 15,
-    padding: 15,
-    marginBottom: 15,
-    elevation: 3,
-    shadowColor: Colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-  },
-  itemMetaPressionado: {
-    opacity: 0.9,
-  },
-  cabecalhoMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
-  },
-  infoMeta: {
-    flex: 1,
-  },
-  tituloMeta: {
-    ...Typography.bodyLarge,
-    color: Colors.textPrimary,
-    fontWeight: '600' as '600',
-  },
-  categoriaMeta: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  statusBadge: {
-    borderRadius: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginTop: 5,
-    alignSelf: 'flex-start',
-  },
-  statusTexto: {
-    ...Typography.caption,
-    color: Colors.buttonText,
-    fontWeight: 'bold' as 'bold',
-  },
-  acoesMeta: {
-    flexDirection: 'row',
-    marginLeft: 10,
-  },
-  botaoAcao: {
-    padding: 5,
-    marginLeft: 5,
-  },
-  botaoAcaoPressionado: {
-    opacity: 0.7,
-  },
-  descricaoMeta: {
-    ...Typography.bodyMedium,
-    color: Colors.textSecondary,
-    marginBottom: 10,
-  },
-  progressoContainer: {
-    marginBottom: 10,
-  },
-  progressoInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 5,
-  },
-  progressoTexto: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
-  },
-  percentualProgresso: {
-    ...Typography.bodySmall,
-    color: Colors.primary,
-    fontWeight: 'bold' as 'bold',
-  },
-  barraProgresso: {
-    height: 10,
-    backgroundColor: Colors.divider,
-    borderRadius: 5,
-    overflow: 'hidden',
-  },
-  preenchimentoProgresso: {
-    height: '100%',
-    borderRadius: 5,
-  },
-  dataContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: Colors.divider,
-    paddingTop: 10,
-  },
-  dataTexto: {
-    ...Typography.caption,
-    color: Colors.textTertiary,
-  },
-  acoesStatus: {
-    flexDirection: 'row',
-  },
-  botaoStatus: {
-    borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    marginLeft: 8,
-  },
-  botaoStatusPressionado: {
-    opacity: 0.7,
-  },
-  textoBotaoStatus: {
-    ...Typography.button,
-    fontSize: 12,
-    color: Colors.buttonText,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: Colors.background,
-    borderRadius: 20,
-    width: '90%',
-    maxHeight: '80%',
-    overflow: 'hidden',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
-  },
-  modalTitle: {
-    ...Typography.h3,
-    color: Colors.textPrimary,
-  },
-  modalBody: {
-    padding: 20,
-  },
-  labelInput: {
-    ...Typography.bodyMedium,
-    color: Colors.textPrimary,
-    marginBottom: 8,
-  },
-  inputIconContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.inputBackground,
-    borderRadius: 10,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: Colors.divider,
-  },
-  inputIcon: {
-    paddingLeft: 15,
-  },
-  input: {
-    flex: 1,
-    paddingHorizontal: 15,
-    height: 50,
-    color: Colors.inputText,
-    ...Typography.bodyMedium,
-  },
-  inputMultiline: {
-    height: 100,
-    textAlignVertical: 'top',
-    paddingVertical: 15,
-  },
-  botaoSalvar: {
-    backgroundColor: Colors.primary,
-    borderRadius: 10,
-    padding: 15,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  botaoSalvarPressionado: {
-    opacity: 0.8,
-  },
-  textoBotaoSalvar: {
-    ...Typography.button,
-    color: Colors.buttonText,
-  },
-});
-
-
+    container: {
+      flex: 1,
+      backgroundColor: Colors.background,
+    },
+    carregando: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    cabecalho: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: Colors.divider,
+    },
+    titulo: {
+      ...Typography.h2,
+      color: Colors.textPrimary,
+    },
+    botaoAdicionar: {
+      backgroundColor: Colors.primary,
+      borderRadius: 10,
+      padding: 8,
+    },
+    botaoAdicionarPressionado: {
+      opacity: 0.8,
+    },
+    filtros: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      paddingHorizontal: 20,
+      marginBottom: 20,
+    },
+    botaoFiltro: {
+      paddingVertical: 8,
+      paddingHorizontal: 15,
+      borderRadius: 20,
+      backgroundColor: Colors.card,
+      borderWidth: 1,
+      borderColor: Colors.divider,
+    },
+    botaoFiltroAtivo: {
+      backgroundColor: Colors.primary,
+      borderColor: Colors.primary,
+    },
+    botaoFiltroPressionado: {
+      opacity: 0.7,
+    },
+    textoFiltro: {
+      ...Typography.bodySmall,
+      color: Colors.textSecondary,
+    },
+    textoFiltroAtivo: {
+      color: Colors.buttonText,
+      fontWeight: 'bold' as 'bold',
+    },
+    conteudo: {
+      flex: 1,
+      paddingHorizontal: 20,
+    },
+    semDados: {
+      alignItems: 'center',
+      paddingVertical: 50,
+    },
+    textoSemDados: {
+      ...Typography.bodyMedium,
+      color: Colors.textSecondary,
+      marginTop: 10,
+    },
+    subtextoSemDados: {
+      ...Typography.caption,
+      color: Colors.textTertiary,
+      textAlign: 'center',
+      marginTop: 5,
+    },
+    listaMetas: {},
+    itemMeta: {
+      backgroundColor: Colors.card,
+      borderRadius: 15,
+      padding: 15,
+      marginBottom: 15,
+      elevation: 3,
+      shadowColor: Colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.23,
+      shadowRadius: 2.62,
+    },
+    itemMetaPressionado: {
+      opacity: 0.9,
+    },
+    cabecalhoMeta: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 10,
+    },
+    infoMeta: {
+      flex: 1,
+    },
+    tituloMeta: {
+      ...Typography.bodyLarge,
+      color: Colors.textPrimary,
+      fontWeight: '600' as '600',
+    },
+    categoriaMeta: {
+      ...Typography.bodySmall,
+      color: Colors.textSecondary,
+      marginTop: 2,
+    },
+    statusBadge: {
+      borderRadius: 5,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      marginTop: 5,
+      alignSelf: 'flex-start',
+    },
+    statusTexto: {
+      ...Typography.caption,
+      color: Colors.buttonText,
+      fontWeight: 'bold' as 'bold',
+    },
+    acoesMeta: {
+      flexDirection: 'row',
+      marginLeft: 10,
+    },
+    botaoAcao: {
+      padding: 5,
+      marginLeft: 5,
+    },
+    botaoAcaoPressionado: {
+      opacity: 0.7,
+    },
+    descricaoMeta: {
+      ...Typography.bodyMedium,
+      color: Colors.textSecondary,
+      marginBottom: 10,
+    },
+    progressoContainer: {
+      marginBottom: 10,
+    },
+    progressoInfo: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 5,
+    },
+    progressoTexto: {
+      ...Typography.bodySmall,
+      color: Colors.textSecondary,
+    },
+    percentualProgresso: {
+      ...Typography.bodySmall,
+      color: Colors.primary,
+      fontWeight: 'bold' as 'bold',
+    },
+    barraProgresso: {
+      height: 10,
+      backgroundColor: Colors.divider,
+      borderRadius: 5,
+      overflow: 'hidden',
+    },
+    preenchimentoProgresso: {
+      height: '100%',
+      borderRadius: 5,
+    },
+    dataContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: Colors.divider,
+      paddingTop: 10,
+    },
+    dataTexto: {
+      ...Typography.caption,
+      color: Colors.textTertiary,
+    },
+    acoesStatus: {
+      flexDirection: 'row',
+    },
+    botaoStatus: {
+      borderRadius: 8,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
+      marginLeft: 8,
+    },
+    botaoStatusPressionado: {
+      opacity: 0.7,
+    },
+    textoBotaoStatus: {
+      fontSize: 12,
+      color: Colors.buttonText,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.7)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalContent: {
+      backgroundColor: Colors.background,
+      borderRadius: 20,
+      width: '90%',
+      maxHeight: '90%',
+      overflow: 'hidden',
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: Colors.divider,
+    },
+    modalTitle: {
+      ...Typography.h3,
+      color: Colors.textPrimary,
+    },
+    modalBody: {
+      padding: 20,
+    },
+    labelInput: {
+      ...Typography.bodyMedium,
+      color: Colors.textPrimary,
+      marginBottom: 8,
+    },
+    inputIconContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: Colors.inputBackground,
+      borderRadius: 10,
+      marginBottom: 15,
+      borderWidth: 1,
+      borderColor: Colors.divider,
+    },
+    inputIcon: {
+      paddingLeft: 15,
+    },
+    input: {
+      flex: 1,
+      paddingHorizontal: 15,
+      height: 50,
+      color: Colors.inputText,
+      fontSize: 16,
+    },
+    inputMultiline: {
+      height: 100,
+      textAlignVertical: 'top',
+      paddingVertical: 15,
+    },
+    botaoSalvar: {
+      backgroundColor: Colors.primary,
+      borderRadius: 10,
+      padding: 15,
+      alignItems: 'center',
+      marginTop: 20,
+      marginBottom: 20,
+    },
+    botaoSalvarPressionado: {
+      opacity: 0.8,
+    },
+    textoBotaoSalvar: {
+      ...Typography.button,
+      color: Colors.buttonText,
+    },
+  });

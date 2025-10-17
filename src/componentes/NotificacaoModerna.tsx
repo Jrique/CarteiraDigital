@@ -5,12 +5,9 @@ import {
   StyleSheet,
   Animated,
   Pressable,
-  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography } from '../estilos/theme';
-
-const { width } = Dimensions.get('window');
+import { Colors } from '../estilos/theme';
 
 export interface NotificacaoProps {
   tipo: 'sucesso' | 'erro' | 'aviso' | 'info';
@@ -18,25 +15,25 @@ export interface NotificacaoProps {
   mensagem: string;
   visivel: boolean;
   onFechar: () => void;
-  duracao?: number; // em milissegundos
+  duracao?: number;
 }
 
 const CORES_NOTIFICACAO = {
   sucesso: {
     background: Colors.success,
-    icone: 'checkmark-circle',
+    icone: 'checkmark-circle-outline',
   },
   erro: {
     background: Colors.error,
-    icone: 'alert-circle',
+    icone: 'alert-circle-outline',
   },
   aviso: {
     background: Colors.warning,
-    icone: 'warning',
+    icone: 'warning-outline',
   },
   info: {
     background: Colors.info,
-    icone: 'information-circle',
+    icone: 'information-circle-outline',
   },
 };
 
@@ -54,7 +51,6 @@ export default function NotificacaoModerna({
 
   useEffect(() => {
     if (visivel) {
-      // Mostrar notificação
       Animated.parallel([
         Animated.timing(animacaoY, {
           toValue: 0,
@@ -68,7 +64,6 @@ export default function NotificacaoModerna({
         }),
       ]).start();
 
-      // Auto-fechar após duração especificada
       timeoutRef.current = setTimeout(() => {
         fecharNotificacao();
       }, duracao);
@@ -124,16 +119,14 @@ export default function NotificacaoModerna({
       >
         <View style={estilos.conteudo}>
           <View style={estilos.iconeContainer}>
-            <Text style={estilos.iconeTexto}>
-              {tipo === 'sucesso' ? '✓' : tipo === 'erro' ? '✕' : tipo === 'aviso' ? '⚠' : 'ℹ'}
-            </Text>
+            <Ionicons name={configNotificacao.icone as any} size={24} color={Colors.textPrimary} />
           </View>
           <View style={estilos.textoContainer}>
             <Text style={estilos.titulo}>{titulo}</Text>
             <Text style={estilos.mensagem}>{mensagem}</Text>
           </View>
           <Pressable style={estilos.botaoFechar} onPress={fecharNotificacao}>
-            <Text style={estilos.botaoFecharTexto}>✕</Text>
+            <Ionicons name="close" size={20} color={Colors.textPrimary} />
           </Pressable>
         </View>
       </Pressable>
@@ -180,24 +173,10 @@ const estilos = StyleSheet.create({
   mensagem: {
     fontSize: 14,
     fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-    opacity: 0.9,
+    color: 'rgba(255, 255, 255, 0.9)',
   },
   botaoFechar: {
     padding: 4,
     marginLeft: 8,
   },
-  iconeTexto: {
-    fontSize: 24,
-    fontWeight: 'bold' as 'bold',
-    color: Colors.textPrimary,
-  },
-  botaoFecharTexto: {
-    fontSize: 16,
-    fontWeight: 'bold' as 'bold',
-    color: Colors.textPrimary,
-  },
 });
-
-
-

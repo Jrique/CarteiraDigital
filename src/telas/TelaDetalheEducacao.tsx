@@ -13,15 +13,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography } from '../estilos/theme';
 import { FirebaseService, Licao, ProgressoLicao } from '../servicos/FirebaseService';
 import { useNotificacao } from '../contextos/NotificacaoContext';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../App';
 
-interface Props {
-  route: {
-    params: {
-      licaoId: string;
-    };
-  };
-  navigation: any;
-}
+type Props = NativeStackScreenProps<RootStackParamList, 'DetalheLicao'>;
+
 
 const categorias = [
   { id: 'orcamento', nome: 'Orçamento', icone: 'wallet-outline', cor: '#4CAF50' },
@@ -30,14 +26,15 @@ const categorias = [
   { id: 'economia', nome: 'Economia', icone: 'leaf-outline', cor: '#8BC34A' },
   { id: 'bancos', nome: 'Bancos', icone: 'business-outline', cor: '#607D8B' },
   { id: 'planejamento', nome: 'Planejamento', icone: 'calendar-outline', cor: '#9C27B0' },
+  { id: 'Geral', nome: 'Geral', icone: 'help-circle-outline', cor: '#95a5a6' },
 ];
 
-export default function TelaDetalheEducacao({ route, navigation }: Props) {
+export default function TelaDetalheLicao({ route, navigation }: Props) {
   const { licaoId } = route.params;
   const [licao, setLicao] = useState<Licao | null>(null);
   const [progresso, setProgresso] = useState<ProgressoLicao | null>(null);
   const [carregando, setCarregando] = useState(true);
-  const { mostrarNotificacao } = useNotificacao();
+  const { mostrarSucesso, mostrarErro } = useNotificacao();
 
   useEffect(() => {
     carregarLicao();
@@ -54,13 +51,12 @@ export default function TelaDetalheEducacao({ route, navigation }: Props) {
       setLicao(licaoData);
       setProgresso(progressoData);
       
-      // Marcar como visualizada automaticamente
-      if (!progressoData?.visualizada) {
+      if (licaoData && !progressoData?.visualizada) {
         await marcarComoVisualizada();
       }
     } catch (error) {
       console.error('Erro ao carregar lição:', error);
-      mostrarNotificacao('Erro ao carregar lição', 'error');
+      mostrarErro('Erro', 'Não foi possível carregar a lição');
       navigation.goBack();
     } finally {
       setCarregando(false);
@@ -69,8 +65,12 @@ export default function TelaDetalheEducacao({ route, navigation }: Props) {
 
   const marcarComoVisualizada = async () => {
     try {
+      setProgresso(prev => 
+        prev 
+        ? { ...prev, visualizada: true, dataVisualizacao: new Date().toISOString() } 
+        : { licaoId, visualizada: true, salva: false, dataVisualizacao: new Date().toISOString() }
+      );
       await FirebaseService.marcarLicaoVisualizada(licaoId);
-      setProgresso(prev => prev ? { ...prev, visualizada: true, dataVisualizacao: new Date() } : null);
     } catch (error) {
       console.error('Erro ao marcar como visualizada:', error);
     }
@@ -79,36 +79,35 @@ export default function TelaDetalheEducacao({ route, navigation }: Props) {
   const toggleSalva = async () => {
     try {
       const novoStatus = !progresso?.salva;
-      await FirebaseService.toggleLicaoSalva(licaoId);
-      setProgresso(prev => prev ? { 
-        ...prev, 
-        salva: novoStatus,
-        dataSalva: novoStatus ? new Date() : undefined
-      } : null);
-      
-      mostrarNotificacao(
-        novoStatus ? 'Lição salva nos favoritos' : 'Lição removida dos favoritos',
-        'success'
+      setProgresso(prev => 
+        prev 
+        ? { ...prev, salva: novoStatus } 
+        : { licaoId, visualizada: true, salva: true }
       );
+      
+      await FirebaseService.toggleLicaoSalva(licaoId);
+      
+      mostrarSucesso('Sucesso', novoStatus ? 'Lição salva nos favoritos' : 'Lição removida dos favoritos');
     } catch (error) {
       console.error('Erro ao salvar lição:', error);
-      mostrarNotificacao('Erro ao salvar lição', 'error');
+      mostrarErro('Erro', 'Não foi possível salvar a lição');
+      setProgresso(prev => prev ? { ...prev, salva: !prev.salva } : null);
     }
   };
 
   const abrirVideoExterno = async () => {
-    if (licao?.videoUrl) {
+    if (licao?.videoId) {
       try {
-        await Linking.openURL(licao.videoUrl);
+        await Linking.openURL(licao.videoId);
       } catch (error) {
         console.error('Erro ao abrir vídeo:', error);
-        mostrarNotificacao('Erro ao abrir vídeo', 'error');
+        mostrarErro('Erro', 'Não foi possível abrir o vídeo');
       }
     }
   };
 
   const obterCategoriaInfo = (categoriaId: string) => {
-    return categorias.find(cat => cat.id === categoriaId) || categorias[0];
+    return categorias.find(cat => cat.id.toLowerCase() === categoriaId.toLowerCase()) || categorias.find(c => c.id === 'Geral')!;
   };
 
   if (carregando) {
@@ -170,12 +169,12 @@ export default function TelaDetalheEducacao({ route, navigation }: Props) {
             <Text style={styles.categoriaTexto}>{categoriaInfo.nome}</Text>
             <Text style={styles.titulo}>
               {licao.titulo}
-              {licao.geradaPorIA && (
+              {licao.criadoPorIA && (
                 <Text style={styles.badgeIA}> ✨ IA</Text>
               )}
             </Text>
             <Text style={styles.dataPublicacao}>
-              Publicado em {licao.criadoEm.toLocaleDateString()}
+              Publicado em {new Date(licao.dataCriacao).toLocaleDateString('pt-BR')}
             </Text>
           </View>
         </View>
@@ -212,7 +211,7 @@ export default function TelaDetalheEducacao({ route, navigation }: Props) {
           <Text style={styles.resumoTexto}>{licao.resumo}</Text>
         </View>
 
-        {licao.tipo === 'video' && licao.videoUrl && (
+        {licao.tipo === 'video' && licao.videoId && (
           <View style={styles.videoContainer}>
             <TouchableOpacity style={styles.botaoVideo} onPress={abrirVideoExterno}>
               <Ionicons name="play-circle" size={48} color={Colors.primary} />
@@ -224,7 +223,7 @@ export default function TelaDetalheEducacao({ route, navigation }: Props) {
 
         <View style={styles.conteudoContainer}>
           <Text style={styles.conteudoTitulo}>Conteúdo</Text>
-          <Text style={styles.conteudoTexto}>{licao.conteudo}</Text>
+          <Text style={styles.conteudoTexto}>{licao.conteudoTexto}</Text>
         </View>
 
         <View style={styles.acaoContainer}>
@@ -452,4 +451,3 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
 });
-

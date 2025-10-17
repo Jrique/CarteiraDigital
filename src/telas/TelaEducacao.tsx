@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Typography } from '../estilos/theme';
 import { FirebaseService, Licao, ProgressoLicao } from '../servicos/FirebaseService';
 import { useNotificacao } from '../contextos/NotificacaoContext';
@@ -28,6 +29,7 @@ const categorias = [
   { id: 'economia', nome: 'Economia', icone: 'leaf-outline', cor: '#8BC34A' },
   { id: 'bancos', nome: 'Bancos', icone: 'business-outline', cor: '#607D8B' },
   { id: 'planejamento', nome: 'Planejamento', icone: 'calendar-outline', cor: '#9C27B0' },
+  { id: 'Geral', nome: 'Geral', icone: 'help-circle-outline', cor: '#95a5a6' },
 ];
 
 const filtros = [
@@ -36,7 +38,7 @@ const filtros = [
   { id: 'favoritas', nome: 'Favoritas' },
 ];
 
-export default function TelaEducacao() {
+export default function TelaEducacao({ navigation }: any) {
   const [licoes, setLicoes] = useState<Licao[]>([]);
   const [progressos, setProgressos] = useState<ProgressoLicao[]>([]);
   const [categoriaFiltro, setCategoriaFiltro] = useState('todos');
@@ -46,15 +48,10 @@ export default function TelaEducacao() {
   const [modalIA, setModalIA] = useState(false);
   const [promptIA, setPromptIA] = useState('');
   const [gerandoLicao, setGerandoLicao] = useState(false);
-  const { mostrarNotificacao } = useNotificacao();
+  const { mostrarAviso, mostrarErro, mostrarSucesso } = useNotificacao();
 
-  useEffect(() => {
-    carregarDados();
-  }, []);
-
-  const carregarDados = async () => {
+  const carregarDados = useCallback(async () => {
     try {
-      setCarregando(true);
       const [licoesData, progressosData] = await Promise.all([
         FirebaseService.listarLicoes(),
         FirebaseService.obterProgressoLicoes(),
@@ -63,25 +60,37 @@ export default function TelaEducacao() {
       setProgressos(progressosData);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
-      mostrarNotificacao('Erro ao carregar lições', 'error');
+      mostrarErro('Erro', 'Não foi possível carregar as lições');
     } finally {
       setCarregando(false);
     }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      setCarregando(true);
+      carregarDados();
+    }, [carregarDados])
+  );
+  
+  const obterCategoriaInfo = (categoriaId: string) => {
+    return categorias.find(cat => cat.id.toLowerCase() === categoriaId.toLowerCase()) || categorias.find(c => c.id === 'Geral')!;
+  };
+
+  const obterProgressoLicao = (licaoId: string) => {
+    return progressos.find(p => p.licaoId === licaoId);
   };
 
   const licoesFiltradas = licoes.filter((licao) => {
-    // Filtro por categoria
-    if (categoriaFiltro !== 'todos' && licao.categoria !== categoriaFiltro) {
+    if (categoriaFiltro !== 'todos' && licao.categoria.toLowerCase() !== categoriaFiltro.toLowerCase()) {
       return false;
     }
 
-    // Filtro por termo de busca
     if (termoBusca && !licao.titulo.toLowerCase().includes(termoBusca.toLowerCase())) {
       return false;
     }
 
-    // Filtro por status
-    const progresso = progressos.find(p => p.licaoId === licao.id);
+    const progresso = obterProgressoLicao(licao.id!);
     if (filtroSelecionado === 'nao_vistas' && progresso?.visualizada) {
       return false;
     }
@@ -92,125 +101,71 @@ export default function TelaEducacao() {
     return true;
   });
 
-  const obterCategoriaInfo = (categoriaId: string) => {
-    return categorias.find(cat => cat.id === categoriaId) || categorias[0];
+  const toggleFavorito = async (licaoId: string) => {
+    const isSalvaAtual = progressos.find(p => p.licaoId === licaoId)?.salva;
+
+    try {
+      setProgressos(prev => {
+        const progressoExistente = prev.find(p => p.licaoId === licaoId);
+        if (progressoExistente) {
+          return prev.map(p => p.licaoId === licaoId ? { ...p, salva: !p.salva } : p);
+        }
+        return [...prev, { licaoId, visualizada: false, salva: true }];
+      });
+      
+      await FirebaseService.toggleLicaoSalva(licaoId);
+      mostrarSucesso('Sucesso', !isSalvaAtual ? 'Lição salva nos favoritos' : 'Lição removida dos favoritos');
+
+    } catch (error) {
+      console.error('Erro ao salvar lição:', error);
+      mostrarErro('Erro', 'Não foi possível salvar a lição');
+      setProgressos(prev => {
+          const progressoExistente = prev.find(p => p.licaoId === licaoId);
+          if (progressoExistente) {
+            return prev.map(p => p.licaoId === licaoId ? { ...p, salva: isSalvaAtual || false } : p);
+          }
+          return prev;
+        });
+    }
   };
 
-  const obterProgressoLicao = (licaoId: string) => {
-    return progressos.find(p => p.licaoId === licaoId);
-  };
 
   const gerarLicaoComIA = async () => {
     if (!promptIA.trim()) {
-      mostrarNotificacao('Digite um tópico para gerar a lição', 'warning');
+      mostrarAviso('Atenção', 'Digite um tópico para gerar a lição');
       return;
     }
-
+  
     try {
       setGerandoLicao(true);
-      
-      // Simulação de geração de lição (substitua pela integração real com IA)
-      const novaLicao: Licao = {
-        id: Date.now().toString(),
-        titulo: `Lição sobre ${promptIA}`,
-        resumo: `Uma lição completa sobre ${promptIA} para melhorar sua educação financeira.`,
-        conteudo: `Esta é uma lição detalhada sobre ${promptIA}.\n\nAqui você aprenderá conceitos importantes e práticos sobre este tópico.\n\nLembre-se de aplicar esses conhecimentos em sua vida financeira.`,
-        categoria: 'planejamento',
-        tipo: 'texto',
-        criadoEm: new Date(),
-        geradaPorIA: true,
-      };
-
-      await FirebaseService.criarLicao(novaLicao);
-      await carregarDados();
-      
-      setModalIA(false);
-      setPromptIA('');
-      mostrarNotificacao('Lição gerada com sucesso!', 'success');
-    } catch (error) {
+      const resultado = await FirebaseService.gerarLicaoComIA({ prompt: promptIA });
+  
+      if (resultado.sucesso) {
+        await FirebaseService.salvarLicaoGerada(resultado);
+        await carregarDados();
+        setModalIA(false);
+        setPromptIA('');
+        mostrarSucesso('Sucesso', 'Lição gerada com sucesso pela IA!');
+      } else {
+        throw new Error(resultado.erro || 'Erro desconhecido ao gerar lição');
+      }
+    } catch (error: any) {
       console.error('Erro ao gerar lição:', error);
-      mostrarNotificacao('Erro ao gerar lição', 'error');
+      mostrarErro('Erro', error.message || 'Não foi possível gerar a lição com a IA.');
     } finally {
       setGerandoLicao(false);
     }
   };
 
-  const renderCategoriaFiltro = () => (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtroContainer}>
-      <TouchableOpacity
-        style={[
-          styles.filtroItem,
-          categoriaFiltro === 'todos' && styles.filtroItemAtivo
-        ]}
-        onPress={() => setCategoriaFiltro('todos')}
-      >
-        <Text style={[
-          styles.filtroTexto,
-          categoriaFiltro === 'todos' && styles.filtroTextoAtivo
-        ]}>
-          Todos
-        </Text>
-      </TouchableOpacity>
-      
-      {categorias.map((categoria) => (
-        <TouchableOpacity
-          key={categoria.id}
-          style={[
-            styles.filtroItem,
-            categoriaFiltro === categoria.id && styles.filtroItemAtivo
-          ]}
-          onPress={() => setCategoriaFiltro(categoria.id)}
-        >
-          <Ionicons 
-            name={categoria.icone as any} 
-            size={16} 
-            color={categoriaFiltro === categoria.id ? Colors.background : Colors.textSecondary} 
-          />
-          <Text style={[
-            styles.filtroTexto,
-            categoriaFiltro === categoria.id && styles.filtroTextoAtivo
-          ]}>
-            {categoria.nome}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  );
-
-  const renderFiltroStatus = () => (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtroStatusContainer}>
-      {filtros.map((filtro) => (
-        <TouchableOpacity
-          key={filtro.id}
-          style={[
-            styles.filtroStatusItem,
-            filtroSelecionado === filtro.id && styles.filtroStatusItemAtivo
-          ]}
-          onPress={() => setFiltroSelecionado(filtro.id)}
-        >
-          <Text style={[
-            styles.filtroStatusTexto,
-            filtroSelecionado === filtro.id && styles.filtroStatusTextoAtivo
-          ]}>
-            {filtro.nome}
-          </Text>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  );
-
   const renderLicao = (licao: Licao) => {
     const categoriaInfo = obterCategoriaInfo(licao.categoria);
-    const progresso = obterProgressoLicao(licao.id);
+    const progresso = obterProgressoLicao(licao.id!);
 
     return (
-      <TouchableOpacity
+      <Pressable
         key={licao.id}
-        style={styles.licaoCard}
-        onPress={() => {
-          // Navegar para detalhes da lição
-          console.log('Navegar para lição:', licao.id);
-        }}
+        style={({pressed}) => [styles.licaoCard, pressed && {backgroundColor: Colors.divider}]}
+        onPress={() => navigation.navigate('DetalheLicao', { licaoId: licao.id })}
       >
         <View style={styles.licaoHeader}>
           <View style={[styles.categoriaIcon, { backgroundColor: categoriaInfo.cor }]}>
@@ -219,7 +174,7 @@ export default function TelaEducacao() {
           <View style={styles.licaoInfo}>
             <Text style={styles.licaoTitulo} numberOfLines={2}>
               {licao.titulo}
-              {licao.geradaPorIA && (
+              {licao.criadoPorIA && (
                 <Text style={styles.badgeIA}> ✨ IA</Text>
               )}
             </Text>
@@ -227,11 +182,15 @@ export default function TelaEducacao() {
           </View>
           <View style={styles.licaoStatus}>
             {progresso?.visualizada && (
-              <Ionicons name="checkmark-circle" size={20} color={Colors.success} />
+              <Ionicons name="checkmark-circle" size={24} color={Colors.success} />
             )}
-            {progresso?.salva && (
-              <Ionicons name="bookmark" size={20} color={Colors.warning} />
-            )}
+            <TouchableOpacity onPress={() => toggleFavorito(licao.id!)} style={{padding: 4}}>
+              <Ionicons 
+                name={progresso?.salva ? "bookmark" : "bookmark-outline"} 
+                size={22} 
+                color={progresso?.salva ? Colors.warning : Colors.textSecondary} 
+              />
+            </TouchableOpacity>
           </View>
         </View>
         
@@ -251,10 +210,10 @@ export default function TelaEducacao() {
             </Text>
           </View>
           <Text style={styles.licaoData}>
-            {licao.criadoEm.toLocaleDateString()}
+            {new Date(licao.dataCriacao).toLocaleDateString('pt-BR')}
           </Text>
         </View>
-      </TouchableOpacity>
+      </Pressable>
     );
   };
 
@@ -294,8 +253,68 @@ export default function TelaEducacao() {
         </View>
       </View>
 
-      {renderCategoriaFiltro()}
-      {renderFiltroStatus()}
+      {/* Container unificado para os filtros */}
+      <View style={styles.containerDeFiltros}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtroContainer}>
+          <TouchableOpacity
+            style={[
+              styles.filtroItem,
+              categoriaFiltro === 'todos' && styles.filtroItemAtivo
+            ]}
+            onPress={() => setCategoriaFiltro('todos')}
+          >
+            <Text style={[
+              styles.filtroTexto,
+              categoriaFiltro === 'todos' && styles.filtroTextoAtivo
+            ]}>
+              Todos
+            </Text>
+          </TouchableOpacity>
+          
+          {categorias.map((categoria) => (
+            <TouchableOpacity
+              key={categoria.id}
+              style={[
+                styles.filtroItem,
+                categoriaFiltro === categoria.id && styles.filtroItemAtivo
+              ]}
+              onPress={() => setCategoriaFiltro(categoria.id)}
+            >
+              <Ionicons 
+                name={categoria.icone as any} 
+                size={16} 
+                color={categoriaFiltro === categoria.id ? Colors.background : Colors.textSecondary} 
+              />
+              <Text style={[
+                styles.filtroTexto,
+                categoriaFiltro === categoria.id && styles.filtroTextoAtivo
+              ]}>
+                {categoria.nome}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={styles.filtroStatusContainer}>
+          {filtros.map((filtro) => (
+            <TouchableOpacity
+              key={filtro.id}
+              style={[
+                styles.filtroStatusItem,
+                filtroSelecionado === filtro.id && styles.filtroStatusItemAtivo
+              ]}
+              onPress={() => setFiltroSelecionado(filtro.id)}
+            >
+              <Text style={[
+                styles.filtroStatusTexto,
+                filtroSelecionado === filtro.id && styles.filtroStatusTextoAtivo
+              ]}>
+                {filtro.nome}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
 
       <ScrollView style={styles.conteudo} showsVerticalScrollIndicator={false}>
         {licoesFiltradas.length === 0 ? (
@@ -311,7 +330,6 @@ export default function TelaEducacao() {
         )}
       </ScrollView>
 
-      {/* Modal de Geração de Lição com IA */}
       <Modal
         visible={modalIA}
         transparent
@@ -372,278 +390,264 @@ export default function TelaEducacao() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-    marginTop: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  titulo: {
-    fontSize: 28,
-    fontWeight: '700' as '700',
-    color: Colors.textPrimary,
-  },
-  botaoIA: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  buscaContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
-  inputBusca: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 48,
-  },
-  inputBuscaTexto: {
-    flex: 1,
-    marginLeft: 12,
-    fontSize: 16,
-    fontWeight: '400' as '400',
-    color: Colors.textPrimary,
-  },
-  filtroContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
-  filtroItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 12,
-  },
-  filtroItemAtivo: {
-    backgroundColor: Colors.primary,
-  },
-  filtroTexto: {
-    fontSize: 14,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-    marginLeft: 6,
-  },
-  filtroTextoAtivo: {
-    color: Colors.background,
-    fontWeight: '600' as '600',
-  },
-  filtroStatusContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  filtroStatusItem: {
-    backgroundColor: Colors.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
-    marginRight: 12,
-  },
-  filtroStatusItemAtivo: {
-    backgroundColor: Colors.primary,
-  },
-  filtroStatusTexto: {
-    fontSize: 14,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-  },
-  filtroStatusTextoAtivo: {
-    color: Colors.background,
-    fontWeight: '600' as '600',
-  },
-  conteudo: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  licaoCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  licaoHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  categoriaIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  licaoInfo: {
-    flex: 1,
-  },
-  licaoTitulo: {
-    fontSize: 16,
-    fontWeight: '600' as '600',
-    color: Colors.textPrimary,
-    marginBottom: 4,
-  },
-  badgeIA: {
-    fontSize: 12,
-    fontWeight: '400' as '400',
-    color: Colors.primary,
-  },
-  licaoCategoria: {
-    fontSize: 12,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-  },
-  licaoStatus: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  licaoResumo: {
-    fontSize: 14,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  licaoFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  licaoTipo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  licaoTipoTexto: {
-    fontSize: 12,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-    marginLeft: 4,
-  },
-  licaoData: {
-    fontSize: 12,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600' as '600',
-    color: Colors.textPrimary,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: 40,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContainer: {
-    backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 24,
-    margin: 20,
-    width: '90%',
-    maxWidth: 400,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalTitulo: {
-    fontSize: 20,
-    fontWeight: '700' as '700',
-    color: Colors.textPrimary,
-  },
-  modalDescricao: {
-    fontSize: 14,
-    fontWeight: '400' as '400',
-    color: Colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  modalInput: {
-    backgroundColor: Colors.inputBackground,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    fontWeight: '400' as '400',
-    color: Colors.inputText,
-    textAlignVertical: 'top',
-    marginBottom: 24,
-    minHeight: 80,
-  },
-  modalBotoes: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  botaoCancelar: {
-    flex: 1,
-    backgroundColor: Colors.buttonSecondary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  textoBotaoCancelar: {
-    fontSize: 16,
-    fontWeight: '600' as '600',
-    color: Colors.textPrimary,
-  },
-  botaoGerar: {
-    flex: 1,
-    backgroundColor: Colors.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  botaoDesabilitado: {
-    opacity: 0.6,
-  },
-  textoBotaoGerar: {
-    fontSize: 16,
-    fontWeight: '600' as '600',
-    color: Colors.buttonText,
-  },
-});
-
+    container: {
+      flex: 1,
+      backgroundColor: Colors.background,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loadingText: {
+      ...Typography.bodyMedium,
+      color: Colors.textSecondary,
+      marginTop: 16,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+    },
+    titulo: {
+      ...Typography.h2,
+    },
+    botaoIA: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: Colors.surface,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    buscaContainer: {
+      paddingHorizontal: 20,
+      marginBottom: 16,
+    },
+    inputBusca: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: Colors.surface,
+      borderRadius: 12,
+      paddingHorizontal: 16,
+      height: 48,
+    },
+    inputBuscaTexto: {
+      flex: 1,
+      marginLeft: 12,
+      ...Typography.bodyMedium,
+      color: Colors.textPrimary,
+    },
+    containerDeFiltros: { // Novo container para os filtros
+        marginBottom: 20,
+    },
+    filtroContainer: {
+        paddingHorizontal: 20,
+        paddingBottom: 12,
+    },
+    filtroItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.surface,
+        paddingHorizontal: 16,
+        borderRadius: 20,
+        marginRight: 10,
+        height: 40,
+    },
+    filtroItemAtivo: {
+      backgroundColor: Colors.primary,
+    },
+    filtroTexto: {
+      ...Typography.bodySmall,
+      color: Colors.textSecondary,
+      marginLeft: 6,
+    },
+    filtroTextoAtivo: {
+      color: Colors.background,
+      fontWeight: '600' as '600',
+    },
+    filtroStatusContainer: {
+      flexDirection: 'row',
+      justifyContent: 'flex-start',
+      paddingHorizontal: 20,
+      gap: 12,
+    },
+    filtroStatusItem: {
+      backgroundColor: Colors.surface,
+      paddingHorizontal: 20,
+      borderRadius: 20,
+      justifyContent: 'center',
+      height: 40,
+    },
+    filtroStatusItemAtivo: {
+      backgroundColor: Colors.primary,
+    },
+    filtroStatusTexto: {
+      ...Typography.bodySmall,
+      color: Colors.textSecondary,
+    },
+    filtroStatusTextoAtivo: {
+      color: Colors.background,
+      fontWeight: '600' as '600',
+    },
+    conteudo: {
+      flex: 1,
+      paddingHorizontal: 20,
+    },
+    licaoCard: {
+      backgroundColor: Colors.surface,
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 16,
+    },
+    licaoHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    categoriaIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12,
+    },
+    licaoInfo: {
+      flex: 1,
+    },
+    licaoTitulo: {
+      ...Typography.bodyLarge,
+      fontWeight: '600' as '600',
+      color: Colors.textPrimary,
+      marginBottom: 4,
+    },
+    badgeIA: {
+      fontSize: 12,
+      fontWeight: '400' as '400',
+      color: Colors.primary,
+    },
+    licaoCategoria: {
+      ...Typography.small,
+      color: Colors.textSecondary,
+    },
+    licaoStatus: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    licaoResumo: {
+      ...Typography.bodySmall,
+      color: Colors.textSecondary,
+      lineHeight: 20,
+      marginBottom: 12,
+    },
+    licaoFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    licaoTipo: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    licaoTipoTexto: {
+      ...Typography.caption,
+      color: Colors.textSecondary,
+      marginLeft: 4,
+    },
+    licaoData: {
+      ...Typography.caption,
+      color: Colors.textSecondary,
+    },
+    emptyContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 60,
+    },
+    emptyText: {
+      ...Typography.h4,
+      color: Colors.textPrimary,
+      marginTop: 16,
+      marginBottom: 8,
+    },
+    emptySubtext: {
+      ...Typography.bodyMedium,
+      color: Colors.textSecondary,
+      textAlign: 'center',
+      paddingHorizontal: 40,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalContainer: {
+      backgroundColor: Colors.surface,
+      borderRadius: 20,
+      padding: 24,
+      margin: 20,
+      width: '90%',
+      maxWidth: 400,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    modalTitulo: {
+      ...Typography.h3,
+    },
+    modalDescricao: {
+      ...Typography.bodyMedium,
+      color: Colors.textSecondary,
+      lineHeight: 20,
+      marginBottom: 20,
+    },
+    modalInput: {
+      backgroundColor: Colors.inputBackground,
+      borderRadius: 12,
+      padding: 16,
+      ...Typography.bodyMedium,
+      color: Colors.inputText,
+      textAlignVertical: 'top',
+      marginBottom: 24,
+      minHeight: 80,
+    },
+    modalBotoes: {
+      flexDirection: 'row',
+      gap: 12,
+    },
+    botaoCancelar: {
+      flex: 1,
+      backgroundColor: Colors.buttonSecondary,
+      borderRadius: 12,
+      paddingVertical: 16,
+      alignItems: 'center',
+    },
+    textoBotaoCancelar: {
+      ...Typography.button,
+      color: Colors.textPrimary,
+    },
+    botaoGerar: {
+      flex: 1,
+      backgroundColor: Colors.primary,
+      borderRadius: 12,
+      paddingVertical: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    botaoDesabilitado: {
+      opacity: 0.6,
+    },
+    textoBotaoGerar: {
+      ...Typography.button,
+    },
+  });
