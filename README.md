@@ -35,12 +35,3 @@ O projeto foi construído com uma stack moderna, focada em performance e escalab
 -   **Inteligência Artificial:**
     -   [Google AI (Gemini API)](https://ai.google.dev/) para a geração de conteúdo educacional.
 
-## 🔧 Instalação e Execução
-
-Para rodar o projeto localmente, siga os passos abaixo.
-
-**Pré-requisitos:**
--   [Node.js](https://nodejs.org/en/) (versão 18 ou superior)
--   [Yarn](https://classic.yarnpkg.com/en/docs/install) ou npm
--   Conta no [Firebase](https://firebase.google.com/) para configurar o backend.
--   Chave de API para o [Google Gemini](https://ai.google.dev/).
