@@ -1,66 +1,46 @@
-# 💰 Carteira Digital
+# Carteira Digital - Gestão Financeira com IA
 
-Um aplicativo completo de gestão financeira pessoal desenvolvido em React Native com Expo e Firebase.
+## 📖 Sobre o Projeto
 
-## 🚀 Funcionalidades
+A **Carteira Digital** é um aplicativo mobile full-stack, desenvolvido em React Native, que oferece uma solução completa para gestão financeira pessoal. O grande diferencial do projeto é a integração com a **IA Generativa do Google (Gemini)**, que cria lições de educação financeira personalizadas para o usuário, tornando o aprendizado sobre finanças mais acessível e dinâmico.
 
-### 🔐 Autenticação
-- Login e registro com email/senha
-- Autenticação persistente com Firebase Auth
-- Validação de formulários e tratamento de erros
+Além da funcionalidade de IA, o aplicativo permite aos usuários gerenciar múltiplas carteiras, registrar transações, definir e acompanhar metas financeiras e visualizar relatórios de gastos.
 
-### 💳 Sistema de Carteiras
-- Criação de múltiplas carteiras personalizadas
-- Cores e ícones personalizáveis
-- Gerenciamento de saldos automático
-- CRUD completo de carteiras
+## ✨ Funcionalidades Principais
 
-### 📊 Transações
-- Adicionar receitas e despesas
-- Categorias fixas predefinidas (Alimentação, Transporte, etc.)
-- Vinculação obrigatória com carteiras
-- Histórico completo com filtros
-- Edição e exclusão de transações
+-   **Autenticação de Usuários:** Sistema seguro de cadastro e login com Firebase Authentication.
+-   **Gestão de Carteiras:** Crie e gerencie diferentes carteiras (ex: Pessoal, Investimentos).
+-   **Registro de Transações:** Adicione despesas e receitas de forma simples e categorizada.
+-   **Metas Financeiras:** Defina objetivos financeiros e acompanhe seu progresso.
+-   **Educação Financeira com IA:** Uma seção dedicada onde o usuário pode solicitar lições sobre diversos tópicos financeiros, geradas em tempo real pela API do Gemini.
+-   **Relatórios Visuais:** Gráficos e relatórios para entender melhor seus padrões de gastos.
 
-### 🎯 Metas Financeiras
-- Criação e acompanhamento de metas
-- Progresso automático em tempo real
-- Status de metas (Ativa, Concluída, Pausada)
-- Atualização incremental de valores
+## 🚀 Tecnologias Utilizadas
 
-### 📈 Relatórios e Estatísticas
-- Gráficos de barras comparativos (Receitas vs Despesas)
-- Filtros por período (Dia, Mês, Ano)
-- Dashboard com resumo financeiro
-- Análise detalhada e dicas financeiras
+O projeto foi construído com uma stack moderna, focada em performance e escalabilidade.
 
-### 📚 Educação Financeira
-- Sistema completo de aprendizados
-- Integração com vídeos do YouTube
-- Categorização de conteúdo
-- Funcionalidade de marcar como lido
-- Sistema de salvos para acesso rápido
+-   **Frontend (Mobile):**
+    -   [React Native](https://reactnative.dev/)
+    -   [Expo](https://expo.dev/)
+    -   [TypeScript](https://www.typescriptlang.org/)
+    -   [React Navigation](https://reactnavigation.org/) para o gerenciamento de rotas.
+    -   Styled Components para estilização.
 
-### 👤 Perfil de Usuário
-- Edição de informações pessoais
-- Upload de foto de perfil (câmera/galeria)
-- Visualização de aprendizados salvos
-- Configurações da conta
+-   **Backend (Serverless):**
+    -   [Firebase](https://firebase.google.com/)
+        -   **Firebase Authentication** para autenticação.
+        -   **Firestore** como banco de dados NoSQL.
+        -   **Firebase Functions** para a lógica de servidor e comunicação com a API do Gemini.
 
-### 🎨 Interface
-- Tema escuro moderno
-- Paleta de cores verde tecnológica
-- Design responsivo e intuitivo
-- Navegação fluida entre telas
+-   **Inteligência Artificial:**
+    -   [Google AI (Gemini API)](https://ai.google.dev/) para a geração de conteúdo educacional.
 
-## 🛠️ Tecnologias Utilizadas
+## 🔧 Instalação e Execução
 
-- **React Native** - Framework mobile
-- **Expo** - Plataforma de desenvolvimento
-- **Firebase Auth** - Autenticação
-- **Firebase Firestore** - Banco de dados
-- **React Navigation** - Navegação
-- **Expo Image Picker** - Seleção de imagens
+Para rodar o projeto localmente, siga os passos abaixo.
 
-
-
+**Pré-requisitos:**
+-   [Node.js](https://nodejs.org/en/) (versão 18 ou superior)
+-   [Yarn](https://classic.yarnpkg.com/en/docs/install) ou npm
+-   Conta no [Firebase](https://firebase.google.com/) para configurar o backend.
+-   Chave de API para o [Google Gemini](https://ai.google.dev/).
