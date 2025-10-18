@@ -61,7 +61,6 @@ Um aplicativo completo de gestão financeira pessoal desenvolvido em React Nativ
 - **Firebase Firestore** - Banco de dados
 - **React Navigation** - Navegação
 - **Expo Image Picker** - Seleção de imagens
-- **React Native YouTube iFrame** - Player de vídeos
 
 
 
