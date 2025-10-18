@@ -8,8 +8,7 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  arrayUnion,
-  arrayRemove,
+  writeBatch,
   orderBy,
   limit,
   Timestamp,
@@ -18,116 +17,226 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth, db } from './firebaseConfig';
 import { User } from 'firebase/auth';
 
-// Inicializar Firebase Functions
-const functions = getFunctions();
-
-// Tipos de dados
+// O restante das interfaces continua igual...
 export interface UserProfile {
-  uid: string;
-  email: string | null;
-  displayName: string | null;
-  fotoPerfilUrl?: string;
-  nome_completo?: string;
-  telefone?: string;
-  data_nascimento?: string;
-  profissao?: string;
-  renda_mensal?: number;
-}
-
-export interface Carteira {
-  id?: string;
-  userId: string;
-  nome: string;
-  descricao?: string;
-  saldo: number;
-  cor: string;
-  icone: string;
-  ativa: boolean;
-}
-
-export interface Transacao {
-  id?: string;
-  userId: string;
-  carteiraId: string;
-  tipo: 'receita' | 'despesa';
-  valor: number;
-  categoria: string;
-  descricao?: string;
-  data: string; // ISO string
-}
-
-export interface Meta {
-  id?: string;
-  userId: string;
-  titulo: string;
-  descricao?: string;
-  valorMeta: number;
-  valorAtual: number;
-  dataInicio: string;
-  dataFim: string;
-  categoria: string;
-  status: 'ativa' | 'concluida' | 'pausada';
-  progressoPercentual?: number;
-}
-
-export interface Licao {
-  id?: string;
-  titulo: string;
-  resumo: string;
-  categoria: string;
-  conteudoTexto?: string;
-  videoId?: string;
-  dataCriacao: string;
-  ativa: boolean;
-  tipo?: 'texto' | 'video';
-  criadoPorIA?: boolean;
-  criadoPor?: string;
-}
-
-export interface ProgressoLicao {
-  licaoId: string;
-  visualizada: boolean;
-  salva: boolean;
-  dataVisualizacao?: string;
-}
-
-export interface DashboardData {
-  saldoTotal: number;
-  receitasMes: number;
-  despesasMes: number;
-  economiaMes: number;
-  transacoesRecentes: Transacao[];
-  metasAtivas: Meta[];
-  carteiras: Carteira[];
-}
-
-// Interfaces para IA Gemini
-export interface GerarLicaoRequest {
-  prompt: string;
-  categoria?: string;
-}
-
-export interface GerarLicaoResponse {
-  titulo: string;
-  conteudoTexto: string;
-  categoria: string;
-  resumo: string;
-  sucesso: boolean;
-  erro?: string;
-}
-
-export interface SalvarLicaoRequest {
-  titulo: string;
-  conteudoTexto: string;
-  categoria: string;
-  resumo: string;
-}
+    uid: string;
+    email: string | null;
+    displayName: string | null;
+    fotoPerfilUrl?: string;
+    nome_completo?: string;
+    telefone?: string;
+    data_nascimento?: string;
+    profissao?: string;
+    renda_mensal?: number;
+  }
+  
+  export interface Carteira {
+    id?: string;
+    userId: string;
+    nome: string;
+    descricao?: string;
+    saldo: number;
+    cor: string;
+    icone: string;
+    ativa: boolean;
+  }
+  
+  export interface Transacao {
+    id?: string;
+    userId: string;
+    carteiraId: string;
+    tipo: 'receita' | 'despesa';
+    valor: number;
+    categoria: string;
+    descricao?: string;
+    data: string; // ISO string
+  }
+  
+  export interface Meta {
+    id?: string;
+    userId: string;
+    titulo: string;
+    descricao?: string;
+    valorMeta: number;
+    valorAtual: number;
+    dataInicio: string;
+    dataFim: string;
+    categoria: string;
+    status: 'ativa' | 'concluida' | 'pausada';
+    progressoPercentual?: number;
+  }
+  
+  export interface Licao {
+    id?: string;
+    titulo: string;
+    resumo: string;
+    categoria: string;
+    conteudoTexto?: string;
+    videoId?: string;
+    dataCriacao: string;
+    ativa: boolean;
+    tipo?: 'texto' | 'video';
+    criadoPorIA?: boolean;
+    criadoPor?: string;
+  }
+  
+  export interface ProgressoLicao {
+    licaoId: string;
+    visualizada: boolean;
+    salva: boolean;
+    dataVisualizacao?: string;
+  }
+  
+  export interface DashboardData {
+    saldoTotal: number;
+    receitasMes: number;
+    despesasMes: number;
+    economiaMes: number;
+    transacoesRecentes: Transacao[];
+    metasAtivas: Meta[];
+    carteiras: Carteira[];
+  }
+  
+  export interface GerarLicaoRequest {
+    prompt: string;
+    categoria?: string;
+  }
+  
+  export interface GerarLicaoResponse {
+    titulo: string;
+    conteudoTexto: string;
+    categoria: string;
+    resumo: string;
+    sucesso: boolean;
+    erro?: string;
+  }
+  
+  export interface SalvarLicaoRequest {
+    titulo: string;
+    conteudoTexto: string;
+    categoria: string;
+    resumo: string;
+  }
+  
+const functions = getFunctions();
 
 class FirebaseServiceClass {
 
+
+
   /**
-   * Gera uma lição educativa usando IA Gemini
+   * Cria uma nova transação e atualiza o saldo da carteira.
    */
+  async criarTransacao(transacao: Omit<Transacao, 'id' | 'userId'>): Promise<string> {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Usuário não autenticado');
+
+    const carteiraRef = doc(db, 'carteiras', transacao.carteiraId);
+    const transacaoRef = doc(collection(db, 'transacoes'));
+
+    const batch = writeBatch(db);
+
+    try {
+      const carteiraDoc = await getDoc(carteiraRef);
+      if (!carteiraDoc.exists()) {
+        throw new Error('Carteira não encontrada');
+      }
+
+      const saldoAtual = carteiraDoc.data().saldo;
+      const novoSaldo = transacao.tipo === 'receita'
+        ? saldoAtual + transacao.valor
+        : saldoAtual - transacao.valor;
+
+      batch.set(transacaoRef, { ...transacao, userId: user.uid });
+      batch.update(carteiraRef, { saldo: novoSaldo });
+
+      await batch.commit();
+      
+      return transacaoRef.id;
+    } catch (error) {
+      console.error('Erro ao criar transação:', error);
+      throw error;
+    }
+  }
+
+  async atualizarTransacao(transacaoId: string, dadosAtualizados: Partial<Transacao>): Promise<void> {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Usuário não autenticado');
+
+    const transacaoRef = doc(db, 'transacoes', transacaoId);
+    const batch = writeBatch(db);
+
+    try {
+      const transacaoOriginalDoc = await getDoc(transacaoRef);
+      if (!transacaoOriginalDoc.exists()) {
+        throw new Error('Transação não encontrada');
+      }
+      const transacaoOriginal = transacaoOriginalDoc.data() as Transacao;
+
+      const carteiraRef = doc(db, 'carteiras', transacaoOriginal.carteiraId);
+      const carteiraDoc = await getDoc(carteiraRef);
+      if (!carteiraDoc.exists()) {
+        throw new Error('Carteira não encontrada');
+      }
+      
+      const saldoAtual = carteiraDoc.data().saldo;
+      
+      const saldoSemValorAntigo = transacaoOriginal.tipo === 'receita'
+        ? saldoAtual - transacaoOriginal.valor
+        : saldoAtual + transacaoOriginal.valor;
+  
+      const tipoFinal = dadosAtualizados.tipo || transacaoOriginal.tipo;
+      const valorFinal = dadosAtualizados.valor || transacaoOriginal.valor;
+      const novoSaldo = tipoFinal === 'receita'
+        ? saldoSemValorAntigo + valorFinal
+        : saldoSemValorAntigo - valorFinal;
+      
+      batch.update(transacaoRef, dadosAtualizados);
+      batch.update(carteiraRef, { saldo: novoSaldo });
+      
+      await batch.commit();
+
+    } catch (error) {
+      console.error('Erro ao atualizar transação:', error);
+      throw error;
+    }
+  }
+
+  async excluirTransacao(transacaoId: string): Promise<void> {
+    const user = auth.currentUser;
+    if (!user) throw new Error('Usuário não autenticado');
+
+    const transacaoRef = doc(db, 'transacoes', transacaoId);
+    const batch = writeBatch(db);
+
+    try {
+      const transacaoDoc = await getDoc(transacaoRef);
+      if (!transacaoDoc.exists()) {
+        throw new Error('Transação não encontrada para exclusão');
+      }
+      const transacao = transacaoDoc.data() as Transacao;
+
+      const carteiraRef = doc(db, 'carteiras', transacao.carteiraId);
+      const carteiraDoc = await getDoc(carteiraRef);
+
+      if (carteiraDoc.exists()) {
+        const saldoAtual = carteiraDoc.data().saldo;
+        const novoSaldo = transacao.tipo === 'receita'
+          ? saldoAtual - transacao.valor
+          : saldoAtual + transacao.valor;
+        
+        batch.update(carteiraRef, { saldo: novoSaldo });
+      }
+
+      batch.delete(transacaoRef);
+
+      await batch.commit();
+    } catch (error) {
+      console.error('Erro ao excluir transação:', error);
+      throw error;
+    }
+  }
+
   async gerarLicaoComIA(request: GerarLicaoRequest): Promise<GerarLicaoResponse> {
     try {
       const gerarLicao = httpsCallable<GerarLicaoRequest, GerarLicaoResponse>(functions, 'gerarLicao');
@@ -308,52 +417,6 @@ class FirebaseServiceClass {
       return [];
     }
   }
-
-  /**
-   * Cria uma nova transação
-   */
-  async criarTransacao(transacao: Omit<Transacao, 'id' | 'userId'>): Promise<string> {
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('Usuário não autenticado');
-
-      const novaTransacao = {
-        ...transacao,
-        userId: user.uid,
-      };
-
-      const docRef = await addDoc(collection(db, 'transacoes'), novaTransacao);
-      return docRef.id;
-    } catch (error) {
-      console.error('Erro ao criar transação:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Atualiza uma transação existente
-   */
-  async atualizarTransacao(transacaoId: string, dadosAtualizados: Partial<Transacao>): Promise<void> {
-    try {
-      await updateDoc(doc(db, 'transacoes', transacaoId), dadosAtualizados);
-    } catch (error) {
-      console.error('Erro ao atualizar transação:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Exclui uma transação
-   */
-  async excluirTransacao(transacaoId: string): Promise<void> {
-    try {
-      await deleteDoc(doc(db, 'transacoes', transacaoId));
-    } catch (error) {
-      console.error('Erro ao excluir transação:', error);
-      throw error;
-    }
-  }
-
 
   /**
    * Lista metas do usuário
@@ -648,6 +711,5 @@ class FirebaseServiceClass {
   }
 }
 
-// Exportar instância única
 export const FirebaseService = new FirebaseServiceClass();
 export default FirebaseService;
